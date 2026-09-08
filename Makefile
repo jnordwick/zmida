@@ -1,15 +1,13 @@
-ZIG_FLAGS=--release=safe --verbose
+.phony: clean retest
 
-all: build
-
-clean:
-	rm -rf .zig-cache zig-out
-
-build: zig-out/bin/zstats
+build:
+	zig build --verbose
 
 test:
-	zig build test ${ZIG_FLAGS}
+	zig build test --verbose --summary new
 
-zig-out/bin/zstats: src/root.zig
-	zig build ${ZIG_FLAGS}
+retest: clean test
+
+clean:
+	rm -rf zig-out .zig-cache *.a *.a.o
 

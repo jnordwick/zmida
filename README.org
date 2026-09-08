@@ -1,51 +1,11 @@
-* Zig Nano-benchmarking Harness
+* zayin -- zig benchmarking harness
 
-UPDATE: I started to refactor and rewrite pieces to get ready to release
-so the repo might be in a little bit of a disarray for a could weeks. 10/19/24
+I'm ripping everything up and chanding the way it runs.
 
-#+BEGIN_QUOTE
-Everything should be made as simple as possible,
-but not any simpler ---Albert Einstein
-#+END_QUOTE
+The new Io interface requires deep changes already and
+there has been some changes in std and the compiler, so
+I'm using this as a reason to make the other changes I
+wanted.
 
-This definitely breaks the 'but not any simpler" part. (No the benchmarks arent
-nano scale, just the library.)
-
-Uses volatile reads/write to blackhole data and try to make sure all reads of
-arguments isn't elided.
-
-Uses clock_gettime() call using MONOTONIC_RAW to get a nano second count. This
-should be one fo the fastest reliable ways. If can be guaranteed a non-broken
-TSC (looking at you AMD), RDTSCP+FENCE is a possibility for tighter timings.
-
-Only checks times at start and stop of workload, not on every invocation. While
-this does include the looping inside the call there are plans to try to get a
-baseline and deduct it. Doing the timing calls on every invocation just adds too
-much noise.
-
-Currently has two timing modes: by count and by time. Either give it an
-invocation count to run to or a millisecond value to run to. The timing is done
-in a separate thread to not interfere with the running of the benched function.
-
-And each of those has two call modes: since value over and over again or give an
-array of values and it will make a fixed number of passes or keep doing full
-passes until the timer expires.
-
-
-* TODO always more
-- [X] find empty run baseline
-- [X] per fix time interval
-- [X] max timed runs
-- [X] other threads to do the timing calls
-- [ ] better interface
-- [ ] warmup
-- [ ] cache flushing (opposide of warmup)
-- [ ] better reporting
-- [X] void returning functions
-- [X] functions with no arguments
-- [ ] steal more JMH ideas
-
-* NOTES
-
-There is still some issues with optimizations creeping into the
-wrong places
+Also renaming it to zayin and will change the repo name
+when soon-ish.

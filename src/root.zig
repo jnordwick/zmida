@@ -1,0 +1,250 @@
+const std = @import("std");
+const ArrayList = std.array_list.Managed;
+const ArgsTuple = std.meta.ArgsTuple;
+const Allocator = std.mem.Allocator;
+
+const util = @import("util.zig");
+const dno = util.dno;
+const now = util.now;
+const set_bool = util.set_bool;
+const get_fname = util.get_fname;
+
+pub const default_name = "(none)";
+
+/// A trial is the result of a series of batches run. A batch is
+/// a number of passes over the args slice given
+pub const Trial = struct {
+    name: []const u8 = "(none)",
+    batches: u64 = 0, // batches per trial, runs.len
+    passes: u64 = 0, // passes per batch, 0 = dynamic
+    calls: u64 = 0, // calls per pass, args.len
+
+    runs: ArrayList(BatchResults),
+
+    pub fn init(alloc: Allocator) Trial {
+        return .{ .runs = .init(alloc) };
+    }
+
+    pub fn deinit(this: *@This()) void {
+        this.runs.deinit();
+    }
+};
+
+/// trial with set number of batches and set number of passes per batch
+pub const CountConfig = struct {
+    warmup_passes: u32 = 100,
+    trial_batches: u32 = 1000,
+    batch_passes: u32 = 1000,
+};
+
+/// trial for a set number of seconds and set number of batches
+pub const TimedConfig = struct {
+    warmup_nanos: u32 = 50 * 1e6, // 50 milliseconds
+    trial_nanos: u64 = 5 * 1e9, // 5 seconds
+    trial_batches: u32 = 1000,
+};
+
+/// the results of a single batch. calls should be a multiple of the number
+/// of arguments
+pub const BatchResults = struct {
+    calls: u64,
+    nanos: u64,
+};
+
+inline fn call(func: anytype, arg: anytype, comptime is_tuple: bool) void {
+    dno(arg);
+    dno(@call(.auto, func, if (is_tuple) arg.* else .{arg.*}));
+}
+
+pub noinline fn run_count_batch(passes: u64, func: anytype, args: anytype, comptime is_tuple: bool) BatchResults {
+    const start = now();
+    for (0..passes) |_| {
+        for (args) |*a| {
+            call(func, a, is_tuple);
+        }
+    }
+    const stop = now();
+    return .{ .calls = passes * args.len, .nanos = stop - start };
+}
+
+noinline fn run_timed_batch(nanos: u64, func: anytype, args: anytype, comptime is_tuple: bool) BatchResults {
+    var done: std.atomic.Value(bool) = .init(false);
+    var start: std.atomic.Value(u64) = .init(0);
+    var timer = std.Thread.spawn(
+        .{},
+        set_bool,
+        .{ &done, &start, nanos },
+    ) catch @panic("could not spawn");
+
+    var passes: u64 = 0;
+    start.store(now(), .release);
+    while (!done.load(.acquire)) {
+        for (args) |*a| {
+            call(func, a, is_tuple);
+        }
+        passes += 1;
+    }
+    const stop = now();
+    timer.join();
+
+    return .{ .calls = passes * args.len, .nanos = stop - start.raw };
+}
+
+pub fn run_timed_trial(alloc: Allocator, config: TimedConfig, func: anytype, args: anytype, comptime is_tuple: bool) !Trial {
+    var trial: Trial = .init(alloc);
+    trial.name = get_fname(func);
+    trial.batches = config.trial_batches;
+    try trial.runs.ensureTotalCapacity(config.trial_batches);
+    trial.passes = 0;
+    trial.calls = args.len;
+
+    _ = run_timed_batch(config.warmup_nanos, func, args, is_tuple);
+    const batch_nanos = try std.math.divCeil(u64, config.trial_nanos, config.trial_batches);
+    for (0..trial.batches) |_| {
+        const res = run_timed_batch(batch_nanos, func, args, is_tuple);
+        try trial.runs.append(res);
+    }
+    return trial;
+}
+
+pub fn run_count_trial(alloc: Allocator, config: CountConfig, func: anytype, args: anytype, comptime is_tuple: bool) !Trial {
+    var trial: Trial = .init(alloc);
+    trial.name = get_fname(func);
+    trial.batches = config.trial_batches;
+    try trial.runs.ensureTotalCapacity(config.trial_batches);
+    trial.passes = config.batch_passes;
+    trial.calls = args.len;
+
+    _ = run_count_batch(config.warmup_passes, func, args, is_tuple);
+    for (0..trial.batches) |_| {
+        const res = run_count_batch(trial.passes, func, args, is_tuple);
+        try trial.runs.append(res);
+    }
+    return trial;
+}
+
+const tt = std.testing;
+
+test "refalldecls" {
+    std.testing.refAllDecls(@This());
+}
+
+test "run_count_batches single" {
+    var rand: std.Random.Xoshiro256 = .init(0);
+    var rr = rand.random();
+    var args: [1000]f64 = undefined;
+    for (&args) |*a| {
+        a.* = rr.float(f64) * 1000;
+    }
+
+    const t = run_count_batch(10, std.math.sin, args[0..1000], false);
+    try tt.expect(t.calls == 10000);
+}
+
+test "run_count_batches multiple" {
+    var rand: std.Random.Xoshiro256 = .init(0);
+    var rr = rand.random();
+    var args: [1000]struct { comptime type = f64, f64, f64 } = undefined;
+    for (&args) |*a| {
+        a.* = .{ f64, 2 + rr.float(f64) * 100, 2 + rr.float(f64) * 1000 };
+    }
+
+    const t = run_count_batch(10, std.math.log, args[0..1000], true);
+    try tt.expect(t.calls == 10000);
+}
+
+test "run_count_trial single" {
+    var rand: std.Random.Xoshiro256 = .init(0);
+    var rr = rand.random();
+    var args: [1000]f64 = undefined;
+    for (&args) |*a| {
+        a.* = rr.float(f64) * 1000;
+    }
+
+    var t = try run_count_trial(tt.allocator, .{
+        .warmup_passes = 3,
+        .trial_batches = 10,
+        .batch_passes = 5,
+    }, std.math.sin, args[0..1000], false);
+    defer t.deinit();
+    try tt.expect(t.runs.items.len > 0);
+}
+
+test "run_count_trial multiple" {
+    var rand: std.Random.Xoshiro256 = .init(0);
+    var rr = rand.random();
+    var args: [1000]struct { comptime type = f64, f64, f64 } = undefined;
+    for (&args) |*a| {
+        a.* = .{ f64, 2 + rr.float(f64) * 100, 2 + rr.float(f64) * 1000 };
+    }
+
+    var t = try run_count_trial(tt.allocator, .{
+        .warmup_passes = 3,
+        .trial_batches = 10,
+        .batch_passes = 5,
+    }, std.math.log, args[0..1000], true);
+    defer t.deinit();
+    try tt.expect(t.runs.items.len > 0);
+}
+
+test "run_timed_batches single" {
+    var rand: std.Random.Xoshiro256 = .init(0);
+    var rr = rand.random();
+    var args: [1000]f64 = undefined;
+    for (&args) |*a| {
+        a.* = rr.float(f64) * 1000;
+    }
+
+    const t = run_timed_batch(50 * 1000 * 1000, std.math.sin, args[0..1000], false);
+    try tt.expect(t.calls % 1000 == 0);
+    try tt.expect(t.nanos > 50 * 1000 * 1000);
+    try tt.expect(t.nanos < 51 * 1000 * 1000);
+}
+
+test "run_timed_batches multiple" {
+    var rand: std.Random.Xoshiro256 = .init(0);
+    var rr = rand.random();
+    var args: [1000]struct { comptime type = f64, f64, f64 } = undefined;
+    for (&args) |*a| {
+        a.* = .{ f64, 2 + rr.float(f64) * 100, 2 + rr.float(f64) * 1000 };
+    }
+
+    const t = run_timed_batch(50 * 1000 * 1000, std.math.log, args[0..1000], true);
+    try tt.expect(t.calls % 1000 == 0);
+    try tt.expect(t.nanos > 50 * 1000 * 1000);
+    try tt.expect(t.nanos < 51 * 1000 * 1000);
+}
+
+test "run_timed_trial single" {
+    var rand: std.Random.Xoshiro256 = .init(0);
+    var rr = rand.random();
+    var args: [1000]f64 = undefined;
+    for (&args) |*a| {
+        a.* = rr.float(f64) * 1000;
+    }
+
+    var t = try run_timed_trial(tt.allocator, .{
+        .warmup_nanos = 50 * 1e6,
+        .trial_nanos = 100 * 1e6,
+        .trial_batches = 10,
+    }, std.math.sin, args[0..1000], false);
+    defer t.deinit();
+    try tt.expect(t.runs.items.len > 0);
+}
+
+test "run_timed_trial multiple" {
+    var rand: std.Random.Xoshiro256 = .init(0);
+    var rr = rand.random();
+    var args: [1000]struct { comptime type = f64, f64, f64 } = undefined;
+    for (&args) |*a| {
+        a.* = .{ f64, 2 + rr.float(f64) * 100, 2 + rr.float(f64) * 1000 };
+    }
+
+    var t = try run_timed_trial(tt.allocator, .{
+        .warmup_nanos = 50 * 1e6,
+        .trial_nanos = 100 * 1e6,
+        .trial_batches = 10,
+    }, std.math.log, args[0..1000], true);
+    defer t.deinit();
+    try tt.expect(t.runs.items.len > 0);
+}

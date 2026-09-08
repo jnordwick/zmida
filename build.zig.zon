@@ -1,11 +1,17 @@
 .{
-    .name = "znh",
+    .name = .zayin,
     .version = "0.0.0",
-    .paths = .{
-        "",
-    },
-
     .dependencies = .{
-        .@"zig-string" = .{ .path = "../zig-string" },
+        .zstring = .{
+            .url = "git+https://github.com/jnordwick/zstring.git#a5ab9085d7eb931901de039d4d6ea258820834de",
+            .hash = "zstring-0.0.2-R7rm_OTzAAAhGdFQsZd0_6imNjpFcE8MJqE4SF6LQXGc",
+        },
+    },
+    .fingerprint = 0xb3cf507b824598d7,
+    .minimum_zig_version = "0.16.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
     },
 }
