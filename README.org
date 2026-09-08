@@ -1,4 +1,4 @@
-* zayin -- zig benchmarking harness
+* zmida -- zig benchmarking harness
 
 I'm ripping everything up and chanding the way it runs.
 
