@@ -6,6 +6,3 @@ The new Io interface requires deep changes already and
 there has been some changes in std and the compiler, so
 I'm using this as a reason to make the other changes I
 wanted.
-
-Also renaming it to zayin and will change the repo name
-when soon-ish.

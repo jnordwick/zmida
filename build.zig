@@ -4,26 +4,22 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const mod = b.addModule("zayin", .{
+    const mod = b.addModule("zmida", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
     });
 
-    const zstring_dep = b.dependency("zstring", .{});
-
     const exe = b.addExecutable(.{
-        .name = "zayin",
+        .name = "zmida",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "zayin", .module = mod },
+                .{ .name = "zmida", .module = mod },
             },
         }),
     });
-
-    exe.root_module.addImport("zstring", zstring_dep.module("zstring"));
 
     b.installArtifact(exe);
 
