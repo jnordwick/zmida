@@ -37,6 +37,24 @@ pub fn float_div(T: type, num: anytype, denom: anytype) T {
     return @as(T, @floatFromInt(num)) / @as(T, @floatFromInt(denom));
 }
 
+pub inline fn from_slice_like(Elem: type, x: anytype) []const Elem {
+    const ti = @typeInfo(@TypeOf(x));
+    switch (ti) {
+        .array => |a| return x[0..a.len],
+        .pointer => |p| {
+            if (p.size == .slice) return x;
+            if (p.size == .one) {
+                switch (@typeInfo(p.child)) {
+                    .array => |a| return x[0..a.len],
+                    else => {},
+                }
+            }
+        },
+        else => {},
+    }
+    @compileError("expected slice-like type");
+}
+
 fn WhoAreYou(x: anytype) type {
     return struct {
         const t = x;
@@ -45,11 +63,12 @@ fn WhoAreYou(x: anytype) type {
     };
 }
 
+const tt = std.testing;
+
 pub fn get_fname(comptime func: anytype) []const u8 {
     return WhoAreYou(func).who;
 }
 
 test get_fname {
-    const n = get_fname(get_fname);
-    try std.testing.expectEqualStrings("get_fname", n);
+    try tt.expectEqualStrings("get_fname", get_fname(get_fname));
 }
