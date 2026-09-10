@@ -1,4 +1,4 @@
-.phony: clean retest
+.PHONY: clean retest
 
 build:
 	zig build --verbose

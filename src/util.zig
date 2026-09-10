@@ -1,25 +1,43 @@
 const std = @import("std");
 pub const dno = std.mem.doNotOptimizeAway;
 
+const clock_nanosleep = std.os.linux.clock_nanosleep;
+const clock_gettime = std.os.linux.clock_gettime;
+const timespec = std.os.linux.timespec;
+
 pub inline fn ns_from_secs(x: f64) u64 {
     return @intFromFloat(1e9 * x);
 }
 
 pub inline fn now() u64 {
-    var ts: std.os.linux.timespec = undefined;
-    const ret = std.os.linux.clock_gettime(std.os.linux.CLOCK.MONOTONIC, &ts);
+    var ts: timespec = undefined;
+    const ret = clock_gettime(.MONOTONIC, &ts);
     if (ret != 0) @panic("clock_gettime failed");
     return nanos_from_timespec(ts);
 }
 
-pub inline fn nanos_from_timespec(ts: std.os.linux.timespec) u64 {
-    const nanos_per_second: u64 = 1000 * 1000 * 1000;
-    return @as(u64, @bitCast(ts.sec)) * nanos_per_second + @as(u64, @bitCast(ts.nsec));
+pub inline fn nanos_from_timespec(ts: timespec) u64 {
+    const nps = 1000 * 1000 * 1000;
+    return @as(u64, @bitCast(ts.sec)) * nps + @as(u64, @bitCast(ts.nsec));
 }
 
-// TODO: add sleep if stop if far enough in future
-pub fn pause_until(stop: u64) void {
-    while (now() < stop) {
+pub inline fn timespec_from_nanos(nanos: u64) timespec {
+    const nps: comptime_int = 1e9;
+    const sec = nanos / nps;
+    const nsec = nanos % nps;
+    return .{ .sec = @intCast(sec), .nsec = @intCast(nsec) };
+}
+
+pub fn pause_until(stop_nanos: u64) void {
+    var max_wakeup: usize = 10;
+    const sleep_min = 1 * 1000 * 1000; // 1 millis
+    var sleep_ts = timespec_from_nanos(stop_nanos - sleep_min);
+    while (clock_nanosleep(.MONOTONIC, .{ .ABSTIME = true }, &sleep_ts, &sleep_ts) != 0) {
+        // when too many wakeups, fall down to polling behavior
+        if (max_wakeup == 0) break;
+        max_wakeup -= 1;
+    }
+    while (now() < stop_nanos) {
         std.atomic.spinLoopHint();
     }
 }
@@ -58,17 +76,32 @@ pub inline fn from_slice_like(Elem: type, x: anytype) []const Elem {
 fn WhoAreYou(x: anytype) type {
     return struct {
         const t = x;
+        // ths format of the string "util.WhoAreYou((function 'get_fname'))"
         pub const the = @typeName(@This());
-        pub const who = the[0 .. the.len - 3][26..];
+        pub const who = blk: {
+            const start = std.mem.indexOfScalar(u8, the, '\'') orelse @compileError("unexpected @typeName format");
+            const end = std.mem.lastIndexOfScalar(u8, the, '\'') orelse @compileError("unexpected @typeName format");
+            break :blk the[start + 1 .. end];
+        };
     };
 }
-
-const tt = std.testing;
 
 pub fn get_fname(comptime func: anytype) []const u8 {
     return WhoAreYou(func).who;
 }
 
+const tt = std.testing;
+
 test get_fname {
+    try tt.expectEqualStrings("util.WhoAreYou((function 'get_fname'))", WhoAreYou(get_fname).the);
     try tt.expectEqualStrings("get_fname", get_fname(get_fname));
+}
+
+test pause_until {
+    const sleep_time = 10 * 1000 * 1000;
+    const start = now();
+    pause_until(start + sleep_time);
+    const stop = now();
+    const diff = @abs(@as(i66, @intCast(stop - start)) - @as(i64, @intCast(sleep_time)));
+    try tt.expect(diff < 1000 * 1000);
 }

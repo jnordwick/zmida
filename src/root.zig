@@ -1,10 +1,12 @@
 const std = @import("std");
-const util = @import("util.zig");
+pub const util = @import("util.zig");
+pub const stats = @import("stats.zig");
+pub const out = @import("out.zig");
 const ArrayList = std.array_list.Managed;
 const ArgsTuple = std.meta.ArgsTuple;
 const Allocator = std.mem.Allocator;
 
-pub const default_name = "(none)";
+pub const TrialStats = stats.TrialStats;
 
 /// A trial is the result of a series of batches run. A batch is
 /// a number of passes over the args slice given
@@ -20,16 +22,16 @@ pub const Trial = struct {
         return .{ .runs = .init(alloc) };
     }
 
-    pub fn deinit(this: *@This()) void {
+    pub fn deinit(this: @This()) void {
         this.runs.deinit();
     }
 };
 
 /// trial with set number of batches and set number of passes per batch
 pub const CountConfig = struct {
-    warmup_passes: u32 = 100,
+    warmup_passes: u32 = 10,
     trial_batches: u32 = 1000,
-    batch_passes: u32 = 1000,
+    batch_passes: u32 = 10,
 };
 
 /// trial for a set number of seconds and set number of batches
@@ -46,23 +48,30 @@ pub const BatchResults = struct {
     nanos: u64,
 };
 
-inline fn call(func: anytype, arg: anytype, comptime is_tuple: bool) void {
+inline fn call(func: anytype, arg: anytype, comptime as_tuple: bool) void {
     util.dno(arg);
-    util.dno(@call(.auto, func, if (is_tuple) arg.* else .{arg.*}));
+    util.dno(@call(.auto, func, if (as_tuple) arg.* else .{arg.*}));
 }
 
-pub noinline fn run_count_batch(passes: u64, func: anytype, args: anytype, comptime is_tuple: bool) BatchResults {
+inline fn is_tuple(T: type) bool {
+    return switch (@typeInfo(T)) {
+        .@"struct" => |s| s.is_tuple,
+        else => false,
+    };
+}
+
+pub noinline fn run_count_batch(passes: u64, func: anytype, args: anytype, comptime as_tuple: bool) BatchResults {
     const start = util.now();
     for (0..passes) |_| {
         for (args) |*a| {
-            call(func, a, is_tuple);
+            call(func, a, as_tuple);
         }
     }
     const stop = util.now();
     return .{ .calls = passes * args.len, .nanos = stop - start };
 }
 
-noinline fn run_timed_batch(nanos: u64, func: anytype, args: anytype, comptime is_tuple: bool) BatchResults {
+noinline fn run_timed_batch(nanos: u64, func: anytype, args: anytype, comptime as_tuple: bool) BatchResults {
     var done: std.atomic.Value(bool) = .init(false);
     var start: std.atomic.Value(u64) = .init(0);
     var timer = std.Thread.spawn(
@@ -75,7 +84,7 @@ noinline fn run_timed_batch(nanos: u64, func: anytype, args: anytype, comptime i
     start.store(util.now(), .release);
     while (!done.load(.acquire)) {
         for (args) |*a| {
-            call(func, a, is_tuple);
+            call(func, a, as_tuple);
         }
         passes += 1;
     }
@@ -88,18 +97,15 @@ noinline fn run_timed_batch(nanos: u64, func: anytype, args: anytype, comptime i
 pub fn bench(alloc: Allocator, config: anytype, func: anytype, args: anytype) !Trial {
     const Elem_t = std.meta.Elem(@TypeOf(args));
     const args_slice: []const Elem_t = util.from_slice_like(Elem_t, args);
-    const is_tuple = switch (@typeInfo(Elem_t)) {
-        .@"struct" => |s| s.is_tuple,
-        else => false,
-    };
     return switch (@TypeOf(config)) {
-        CountConfig => run_count_trial(alloc, config, func, args_slice, is_tuple),
-        TimedConfig => run_timed_trial(alloc, config, func, args_slice, is_tuple),
+        CountConfig => run_count_trial(alloc, config, func, Elem_t, args_slice),
+        TimedConfig => run_timed_trial(alloc, config, func, Elem_t, args_slice),
         else => @compileError("bench passed unknown config type"),
     };
 }
 
-pub fn run_timed_trial(alloc: Allocator, config: TimedConfig, func: anytype, args: anytype, comptime is_tuple: bool) !Trial {
+pub fn run_timed_trial(alloc: Allocator, config: TimedConfig, func: anytype, Elem_t: type, args: []const Elem_t) !Trial {
+    const as_tuple = is_tuple(Elem_t);
     var trial: Trial = .init(alloc);
     trial.name = util.get_fname(func);
     trial.batches = config.trial_batches;
@@ -107,16 +113,17 @@ pub fn run_timed_trial(alloc: Allocator, config: TimedConfig, func: anytype, arg
     trial.passes = 0;
     trial.calls = args.len;
 
-    _ = run_timed_batch(config.warmup_nanos, func, args, is_tuple);
+    _ = run_timed_batch(config.warmup_nanos, func, args, as_tuple);
     const batch_nanos = try std.math.divCeil(u64, config.trial_nanos, config.trial_batches);
     for (0..trial.batches) |_| {
-        const res = run_timed_batch(batch_nanos, func, args, is_tuple);
+        const res = run_timed_batch(batch_nanos, func, args, as_tuple);
         try trial.runs.append(res);
     }
     return trial;
 }
 
-pub fn run_count_trial(alloc: Allocator, config: CountConfig, func: anytype, args: anytype, comptime is_tuple: bool) !Trial {
+pub fn run_count_trial(alloc: Allocator, config: CountConfig, func: anytype, Elem_t: type, args: []const Elem_t) !Trial {
+    const as_tuple = is_tuple(Elem_t);
     var trial: Trial = .init(alloc);
     trial.name = util.get_fname(func);
     trial.batches = config.trial_batches;
@@ -124,9 +131,9 @@ pub fn run_count_trial(alloc: Allocator, config: CountConfig, func: anytype, arg
     trial.passes = config.batch_passes;
     trial.calls = args.len;
 
-    _ = run_count_batch(config.warmup_passes, func, args, is_tuple);
+    _ = run_count_batch(config.warmup_passes, func, args, as_tuple);
     for (0..trial.batches) |_| {
-        const res = run_count_batch(trial.passes, func, args, is_tuple);
+        const res = run_count_batch(trial.passes, func, args, as_tuple);
         try trial.runs.append(res);
     }
     return trial;
