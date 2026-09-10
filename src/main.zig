@@ -11,6 +11,10 @@ fn tgamma(x: f64) f64 {
     return std.math.gamma(f64, x);
 }
 
+fn log(x: f64) f64 {
+    return @log(x);
+}
+
 fn wait(x: u32) void {
     const start = zz.util.now();
     zz.util.pause_until(start + x * 1000 * 1000);
@@ -25,25 +29,29 @@ fn printf(io: anytype, comptime fmt: anytype, args: anytype) !void {
 }
 
 pub fn main(init: std.process.Init) !void {
-    // var xosh: std.Random.Xoshiro256 = .init(0);
-    // var rand = xosh.random();
+    var xosh: std.Random.Xoshiro256 = .init(0);
+    var rand = xosh.random();
+    const N = 100;
+    var xx: [N]f64 = undefined;
+    for (&xx) |*x| {
+        x.* = rand.float(f64) * std.math.pi * 8;
+    }
 
-    // const N = 1000;
-    // var xx: [N]f64 = undefined;
-    // for (&xx) |*x| {
-    //     x.* = rand.float(f64) * 1000;
-    // }
-
-    const ss = [5]u32{ 10, 10, 10, 10, 10 };
-
-    try printf(init.io, "running\n", .{});
-    const config = zz.CountConfig{ .warmup_passes = 1, .trial_batches = 10, .batch_passes = 1 };
-    const t1 = try zz.bench(init.gpa, config, wait, ss);
-    const t2 = try zz.bench(
-    const stats: zz.TrialStats = .init(&t1);
+    const config = zz.CountConfig{ .warmup_passes = 50, .trial_batches = 1000, .batch_passes = 10 };
+    const t3 = try zz.bench(init.gpa, config, log, xx);
+    const t2 = try zz.bench(init.gpa, config, tgamma, xx);
+    const t1 = try zz.bench(init.gpa, config, lgamma, xx);
+    const t4 = try zz.bench(init.gpa, config, std.math.sinh, xx);
+    const s1: zz.TrialStats = .init(&t1);
+    const s2: zz.TrialStats = .init(&t2);
+    const s3: zz.TrialStats = .init(&t3);
+    const s4: zz.TrialStats = .init(&t4);
     defer t1.deinit();
+    defer t2.deinit();
+    defer t3.deinit();
+    defer t4.deinit();
 
-    const ts: [1]zz.TrialStats = .{stats};
+    const ts = [_]zz.TrialStats{ s1, s2, s3, s4 };
     var stdout = std.Io.File.stdout().writer(init.io, &.{});
     try zz.out.text_out(&stdout.interface, &ts);
 }

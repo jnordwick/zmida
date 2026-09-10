@@ -60,7 +60,7 @@ inline fn is_tuple(T: type) bool {
     };
 }
 
-pub noinline fn run_count_batch(passes: u64, func: anytype, args: anytype, comptime as_tuple: bool) BatchResults {
+pub fn run_count_batch(passes: u64, func: anytype, args: anytype, comptime as_tuple: bool) BatchResults {
     const start = util.now();
     for (0..passes) |_| {
         for (args) |*a| {
@@ -71,7 +71,7 @@ pub noinline fn run_count_batch(passes: u64, func: anytype, args: anytype, compt
     return .{ .calls = passes * args.len, .nanos = stop - start };
 }
 
-noinline fn run_timed_batch(nanos: u64, func: anytype, args: anytype, comptime as_tuple: bool) BatchResults {
+pub fn run_timed_batch(nanos: u64, func: anytype, args: anytype, comptime as_tuple: bool) BatchResults {
     var done: std.atomic.Value(bool) = .init(false);
     var start: std.atomic.Value(u64) = .init(0);
     var timer = std.Thread.spawn(
@@ -131,7 +131,10 @@ pub fn run_count_trial(alloc: Allocator, config: CountConfig, func: anytype, Ele
     trial.passes = config.batch_passes;
     trial.calls = args.len;
 
-    _ = run_count_batch(config.warmup_passes, func, args, as_tuple);
+    const warmres = run_count_batch(config.warmup_passes, func, args, as_tuple);
+    util.dno(warmres);
+    try trial.runs.append(warmres);
+    trial.runs.clearRetainingCapacity();
     for (0..trial.batches) |_| {
         const res = run_count_batch(trial.passes, func, args, as_tuple);
         try trial.runs.append(res);
