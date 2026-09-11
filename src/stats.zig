@@ -5,7 +5,6 @@ const float_div = util.float_div;
 
 /// a batch is the atomic level for the stats. any stats lower than
 /// that are based on running a batch and dividing by the number of
-/// passes or calls in it.
 pub const TrialStats = struct {
     trial: *const zz.Trial,
     trial_nanos: u64 = 0,
@@ -13,10 +12,9 @@ pub const TrialStats = struct {
     call_max_ns: f64 = 0,
     call_min_ns: f64 = 0,
     call_avg_ns: f64 = 0,
-    call_stdev_ns: f64 = 0,
 
     pub fn init(trial: *const zz.Trial) TrialStats {
-        const runs_slice = trial.runs.items;
+        const runs_slice = trial.data.items;
         if (runs_slice.len == 0) return .{ .trial = trial };
 
         var total_calls: u64 = 0;
@@ -24,7 +22,6 @@ pub const TrialStats = struct {
         var min_ns: f64 = std.math.inf(f64);
         var max_ns: f64 = -std.math.inf(f64);
 
-        // Pass 1: Gather grand totals and establish min/max call durations
         for (runs_slice) |batch| {
             if (batch.calls == 0) @panic("batch had zero calls");
 
@@ -36,31 +33,13 @@ pub const TrialStats = struct {
             if (batch_avg_ns > max_ns) max_ns = batch_avg_ns;
         }
 
-        const avg_ns = float_div(f64, total_nanos, total_calls);
-
-        // Pass 2: Calculate the unrolled-call standard deviation
-        var sum_squared_diffs: f64 = 0.0;
-        for (runs_slice) |batch| {
-            if (batch.calls == 0) @panic("batch had zero calls");
-
-            const batch_avg_ns = float_div(f64, batch.nanos, batch.calls);
-            const diff = batch_avg_ns - avg_ns;
-
-            // Multiply by the individual batch's call count to scale it to the total data set
-            sum_squared_diffs += @as(f64, @floatFromInt(batch.calls)) * (diff * diff);
-        }
-
-        const denominator: f64 = @floatFromInt(total_calls);
-        const stdev_ns = @sqrt(sum_squared_diffs / denominator);
-
         return TrialStats{
             .trial = trial,
             .trial_nanos = total_nanos,
             .trial_calls = total_calls,
             .call_max_ns = max_ns,
             .call_min_ns = min_ns,
-            .call_avg_ns = avg_ns,
-            .call_stdev_ns = stdev_ns,
+            .call_avg_ns = float_div(f64, total_calls, total_nanos),
         };
     }
 };

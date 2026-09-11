@@ -8,42 +8,42 @@ const Allocator = std.mem.Allocator;
 
 pub const TrialStats = stats.TrialStats;
 
-/// A trial is the result of a series of batches run. A batch is
-/// a number of passes over the args slice given
+/// A trial is the result of a series of samples. A sample is
+/// a number of sweeps over the args slice given
 pub const Trial = struct {
     name: []const u8 = "(none)",
-    batches: u64 = 0, // batches per trial, runs.len
-    passes: u64 = 0, // passes per batch, 0 = dynamic
-    calls: u64 = 0, // calls per pass, args.len
+    samples: u64 = 0, // samples per trial, data.len
+    sweeps: u64 = 0, // sweeps per sample, 0 = dynamic
+    calls: u64 = 0, // calls per sweep, args.len
 
-    runs: ArrayList(BatchResults),
+    data: ArrayList(Sample),
 
     pub fn init(alloc: Allocator) Trial {
-        return .{ .runs = .init(alloc) };
+        return .{ .data = .init(alloc) };
     }
 
     pub fn deinit(this: @This()) void {
-        this.runs.deinit();
+        this.data.deinit();
     }
 };
 
-/// trial with set number of batches and set number of passes per batch
+/// trial with set number of samples and set number of sweeps per sample
 pub const CountConfig = struct {
-    warmup_passes: u32 = 10,
-    trial_batches: u32 = 1000,
-    batch_passes: u32 = 10,
+    warmup_sweeps: u32 = 5000,
+    trial_samples: u32 = 10000,
+    sample_sweeps: u32 = 20,
 };
 
-/// trial for a set number of seconds and set number of batches
+/// trial for a set number of seconds and set number of samples
 pub const TimedConfig = struct {
-    warmup_nanos: u32 = 50 * 1e6, // 50 milliseconds
-    trial_nanos: u64 = 5 * 1e9, // 5 seconds
-    trial_batches: u32 = 1000,
+    warmup_nanos: u32 = 100 * 1e6, // 100 milliseconds
+    trial_nanos: u64 = 1 * 1e9, // 1 second
+    trial_samples: u32 = 1000,
 };
 
-/// the results of a single batch. calls should be a multiple of the number
-/// of arguments
-pub const BatchResults = struct {
+/// the results of a single sample.
+/// calls should be a multiple of the number of arguments (sweeps)
+pub const Sample = struct {
     calls: u64,
     nanos: u64,
 };
@@ -60,18 +60,18 @@ inline fn is_tuple(T: type) bool {
     };
 }
 
-pub fn run_count_batch(passes: u64, func: anytype, args: anytype, comptime as_tuple: bool) BatchResults {
+pub fn run_count_samples(sweeps: u64, func: anytype, args: anytype, comptime as_tuple: bool) Sample {
     const start = util.now();
-    for (0..passes) |_| {
+    for (0..sweeps) |_| {
         for (args) |*a| {
             call(func, a, as_tuple);
         }
     }
     const stop = util.now();
-    return .{ .calls = passes * args.len, .nanos = stop - start };
+    return .{ .calls = sweeps * args.len, .nanos = stop - start };
 }
 
-pub fn run_timed_batch(nanos: u64, func: anytype, args: anytype, comptime as_tuple: bool) BatchResults {
+pub fn run_timed_sample(nanos: u64, func: anytype, args: anytype, comptime as_tuple: bool) Sample {
     var done: std.atomic.Value(bool) = .init(false);
     var start: std.atomic.Value(u64) = .init(0);
     var timer = std.Thread.spawn(
@@ -80,18 +80,18 @@ pub fn run_timed_batch(nanos: u64, func: anytype, args: anytype, comptime as_tup
         .{ &done, &start, nanos },
     ) catch @panic("could not spawn");
 
-    var passes: u64 = 0;
+    var sweeps: u64 = 0;
     start.store(util.now(), .release);
     while (!done.load(.acquire)) {
         for (args) |*a| {
             call(func, a, as_tuple);
         }
-        passes += 1;
+        sweeps += 1;
     }
     const stop = util.now();
     timer.join();
 
-    return .{ .calls = passes * args.len, .nanos = stop - start.raw };
+    return .{ .calls = sweeps * args.len, .nanos = stop - start.raw };
 }
 
 pub fn bench(alloc: Allocator, config: anytype, func: anytype, args: anytype) !Trial {
@@ -108,16 +108,16 @@ pub fn run_timed_trial(alloc: Allocator, config: TimedConfig, func: anytype, Ele
     const as_tuple = is_tuple(Elem_t);
     var trial: Trial = .init(alloc);
     trial.name = util.get_fname(func);
-    trial.batches = config.trial_batches;
-    try trial.runs.ensureTotalCapacity(config.trial_batches);
-    trial.passes = 0;
+    trial.samples = config.trial_samples;
+    try trial.data.ensureTotalCapacity(config.trial_samples);
+    trial.sweeps = 0;
     trial.calls = args.len;
 
-    _ = run_timed_batch(config.warmup_nanos, func, args, as_tuple);
-    const batch_nanos = try std.math.divCeil(u64, config.trial_nanos, config.trial_batches);
-    for (0..trial.batches) |_| {
-        const res = run_timed_batch(batch_nanos, func, args, as_tuple);
-        try trial.runs.append(res);
+    _ = run_timed_sample(config.warmup_nanos, func, args, as_tuple);
+    const sample_nanos = try std.math.divCeil(u64, config.trial_nanos, config.trial_samples);
+    for (0..trial.samples) |_| {
+        const res = run_timed_sample(sample_nanos, func, args, as_tuple);
+        try trial.data.append(res);
     }
     return trial;
 }
@@ -126,18 +126,18 @@ pub fn run_count_trial(alloc: Allocator, config: CountConfig, func: anytype, Ele
     const as_tuple = is_tuple(Elem_t);
     var trial: Trial = .init(alloc);
     trial.name = util.get_fname(func);
-    trial.batches = config.trial_batches;
-    try trial.runs.ensureTotalCapacity(config.trial_batches);
-    trial.passes = config.batch_passes;
+    trial.samples = config.trial_samples;
+    try trial.data.ensureTotalCapacity(config.trial_samples);
+    trial.sweeps = config.sample_sweeps;
     trial.calls = args.len;
 
-    const warmres = run_count_batch(config.warmup_passes, func, args, as_tuple);
+    const warmres = run_count_samples(config.warmup_sweeps, func, args, as_tuple);
     util.dno(warmres);
-    try trial.runs.append(warmres);
-    trial.runs.clearRetainingCapacity();
-    for (0..trial.batches) |_| {
-        const res = run_count_batch(trial.passes, func, args, as_tuple);
-        try trial.runs.append(res);
+    try trial.data.append(warmres);
+    trial.data.clearRetainingCapacity();
+    for (0..trial.samples) |_| {
+        const res = run_count_samples(trial.sweeps, func, args, as_tuple);
+        try trial.data.append(res);
     }
     return trial;
 }
@@ -148,7 +148,7 @@ test "refalldecls" {
     std.testing.refAllDecls(@This());
 }
 
-test "run_count_batches single" {
+test "run_count_samples single" {
     var rand: std.Random.Xoshiro256 = .init(0);
     var rr = rand.random();
     var args: [1000]f64 = undefined;
@@ -157,11 +157,11 @@ test "run_count_batches single" {
     }
     const args_slice: []f64 = &args;
 
-    const t = run_count_batch(10, std.math.sin, args_slice, false);
+    const t = run_count_samples(10, std.math.sin, args_slice, false);
     try tt.expect(t.calls == 10000);
 }
 
-test "run_count_batches multiple" {
+test "run_count_samples multiple" {
     const arg_t = struct { comptime type = f64, f64, f64 };
 
     var rand: std.Random.Xoshiro256 = .init(0);
@@ -172,7 +172,7 @@ test "run_count_batches multiple" {
     }
     const args_slice: []arg_t = &args;
 
-    const t = run_count_batch(10, std.math.log, args_slice, true);
+    const t = run_count_samples(10, std.math.log, args_slice, true);
     try tt.expect(t.calls == 10000);
 }
 
@@ -185,12 +185,12 @@ test "run_count_trial single" {
     }
 
     var t = try bench(tt.allocator, CountConfig{
-        .warmup_passes = 3,
-        .trial_batches = 10,
-        .batch_passes = 5,
+        .warmup_sweeps = 3,
+        .trial_samples = 10,
+        .sample_sweeps = 5,
     }, std.math.sin, args);
     defer t.deinit();
-    try tt.expect(t.runs.items.len > 0);
+    try tt.expect(t.data.items.len > 0);
 }
 
 test "run_count_trial multiple" {
@@ -202,15 +202,15 @@ test "run_count_trial multiple" {
     }
 
     var t = try bench(tt.allocator, CountConfig{
-        .warmup_passes = 3,
-        .trial_batches = 10,
-        .batch_passes = 5,
+        .warmup_sweeps = 3,
+        .trial_samples = 10,
+        .sample_sweeps = 5,
     }, std.math.log, args);
     defer t.deinit();
-    try tt.expect(t.runs.items.len > 0);
+    try tt.expect(t.data.items.len > 0);
 }
 
-test "run_timed_batches single" {
+test "run_timed_samples single" {
     var rand: std.Random.Xoshiro256 = .init(0);
     var rr = rand.random();
     var args: [1000]f64 = undefined;
@@ -219,13 +219,13 @@ test "run_timed_batches single" {
     }
     const args_slice: []f64 = &args;
 
-    const t = run_timed_batch(50 * 1000 * 1000, std.math.sin, args_slice, false);
+    const t = run_timed_sample(50 * 1000 * 1000, std.math.sin, args_slice, false);
     try tt.expect(t.calls % 1000 == 0);
     try tt.expect(t.nanos > 50 * 1000 * 1000);
     try tt.expect(t.nanos < 51 * 1000 * 1000);
 }
 
-test "run_timed_batches multiple" {
+test "run_timed_samples multiple" {
     const arg_t = struct { comptime type = f64, f64, f64 };
 
     var rand: std.Random.Xoshiro256 = .init(0);
@@ -236,7 +236,7 @@ test "run_timed_batches multiple" {
     }
     const args_slice: []arg_t = &args;
 
-    const t = run_timed_batch(50 * 1000 * 1000, std.math.log, args_slice, true);
+    const t = run_timed_sample(50 * 1000 * 1000, std.math.log, args_slice, true);
     try tt.expect(t.calls % 1000 == 0);
     try tt.expect(t.nanos > 50 * 1000 * 1000);
     try tt.expect(t.nanos < 51 * 1000 * 1000);
@@ -253,7 +253,7 @@ test "run_timed_trial single" {
     var t = try bench(tt.allocator, TimedConfig{
         .warmup_nanos = 50 * 1e6,
         .trial_nanos = 100 * 1e6,
-        .trial_batches = 10,
+        .trial_samples = 10,
     }, std.math.sin, args);
     defer t.deinit();
 }
@@ -269,8 +269,8 @@ test "run_timed_trial multiple" {
     var t = try bench(tt.allocator, TimedConfig{
         .warmup_nanos = 50 * 1e6,
         .trial_nanos = 100 * 1e6,
-        .trial_batches = 10,
+        .trial_samples = 10,
     }, std.math.log, args);
     defer t.deinit();
-    try tt.expect(t.runs.items.len > 0);
+    try tt.expect(t.data.items.len > 0);
 }
