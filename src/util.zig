@@ -111,6 +111,54 @@ pub fn get_file(env: Env, fname: ?[]const u8, suffix: []const u8) !std.Io.File {
     return std.Io.Dir.cwd().createFile(env.io, name[0..len], .{});
 }
 
+pub const CpuidRegisters = struct {
+    eax: u32,
+    ebx: u32,
+    ecx: u32,
+    edx: u32,
+};
+
+fn invariant_tsc() bool {
+    const leaf = cpuid(0x80000000, 0);
+    if (leaf.eax < 0x80000007) return false;
+    return (cpuid(0x80000007, 0).edx & (1 << 8)) != 0;
+}
+
+pub fn get_tsc_freq() ?u64 {
+    if (!invariant_tsc()) return null;
+
+    const max_leaf = cpuid(0, 0).eax;
+    if (max_leaf >= 0x15) {
+        const leaf = cpuid(0x15, 0);
+        if (leaf.eax != 0 and leaf.ecx != 0) {
+            return (@as(u64, leaf.ecx) * leaf.ebx) / leaf.eax;
+        }
+    }
+    if (max_leaf >= 0x16) {
+        const leaf = cpuid(0x16, 0);
+        const mhz = leaf.eax & 0xffff;
+        if (mhz != 0) return @as(u64, mhz) * 1_000_000;
+    }
+    return null;
+}
+
+pub fn cpuid(leaf: u32, subleaf: u32) CpuidRegisters {
+    var eax: u32 = undefined;
+    var ebx: u32 = undefined;
+    var ecx: u32 = undefined;
+    var edx: u32 = undefined;
+
+    asm volatile ("cpuid"
+        : [eax] "={eax}" (eax),
+          [ebx] "={ebx}" (ebx),
+          [ecx] "={ecx}" (ecx),
+          [edx] "={edx}" (edx),
+        : [eax_in] "{eax}" (leaf),
+          [ecx_in] "{ecx}" (subleaf),
+    );
+    return .{ .eax = eax, .ebx = ebx, .ecx = ecx, .edx = edx };
+}
+
 const tt = std.testing;
 
 test get_fname {
@@ -125,4 +173,9 @@ test pause_until {
     const stop = now();
     const diff = @abs(@as(i66, @intCast(stop - start)) - @as(i64, @intCast(sleep_time)));
     try tt.expect(diff < 1000 * 1000);
+}
+
+test "tsc" {
+    try tt.expect(invariant_tsc());
+    try tt.expect(get_tsc_freq() != null);
 }
