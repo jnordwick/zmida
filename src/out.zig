@@ -1,68 +1,98 @@
 const std = @import("std");
 const zz = @import("root.zig");
 
+const text_header =
+    \\{[name]s}
+    \\units: {[longunits]s}
+    \\mode: {[mode]s}
+    \\
+;
+
+//fn write_count_config(writer: *std.Io.Writer, config: zz.CountConfig) !void {}
+//fn write_timed_config(writer: *std.Io.Writer, config: zz.TimedConfig) !void {}
+
+fn write_n(writer: *std.Io.Writer, x: u8, count: usize) !void {
+    for (0..count) |_| {
+        try writer.writeByte(x);
+    }
+}
+
 pub fn text_out_thruput(writer: *std.Io.Writer, trials: []const zz.TrialStats) !void {
     var name_len: usize = "fn".len;
-    var max_avg: f64 = 1;
+    var max_avg: f64 = 0;
     for (trials) |stats| {
         name_len = @max(name_len, stats.trial.name.len);
         max_avg = @max(max_avg, 1e9 / stats.call_avg_ns);
     }
     const groups: u32 = @intFromFloat(std.math.floor(std.math.log(f64, 1000.0, max_avg)));
-    const units = switch (groups) {
-        0 => " /s",
-        1 => " K/s",
-        2 => " M/s",
-        else => " G/s",
-    };
-    const factor: f64 = switch (groups) {
-        0 => 1e9,
-        1 => 1e6,
-        2 => 1e3,
-        else => 1.0,
+    _, const longunits, const factor: f64 = switch (groups) {
+        0 => .{ "ops", "ops/sec", 1e9 },
+        1 => .{ "Kops", "Kops/sec", 1e6 },
+        2 => .{ "Mops", "Mops/sec", 1e3 },
+        else => .{ "Gops", "Gops/sec", 1e0 },
     };
 
+    try writer.print(text_header, .{
+        .name = "default suite name",
+        .mode = "throughput (higher is better)",
+        .longunits = longunits,
+    });
+
     try writer.print(
-        "{[name]s: <[name_len]} " ++
-            "{[calls]s: >12} " ++
-            "{[total]s: >12} " ++
-            "{[min]s: >10}{[units]s} " ++
-            "{[avg]s: >10}{[units]s} " ++
-            "{[max]s: >10}{[units]s}\n",
+        "{[name]s: <[name_len]} |" ++
+            "{[calls]s: >11} " ++
+            "{[total]s: >8} " ++
+            "{[avg]s: >7} |" ++
+            "{[min]s: >7} " ++
+            "{[p25]s: >7} " ++
+            "{[p50]s: >7} " ++
+            "{[p75]s: >7} " ++
+            "{[max]s: >7}\n",
         .{
             .name = "fn",
-            .name_len = name_len,
-            .units = units,
+            .name_len = name_len + 1,
             .calls = "calls",
-            .total = "total sec",
-            .min = "min",
-            .avg = "avg",
-            .max = "max",
+            .total = "seconds",
+            .avg = "mean",
+            .min = "best",
+            .p25 = "p75",
+            .p50 = "p50",
+            .p75 = "p25",
+            .max = "worst",
         },
     );
 
-    const separator_len = name_len + 1 + 12 + 1 + 12 + 1 + 10 + 5 + 10 + 5 + 10 + 5 + 10 + 4;
-
-    for (0..separator_len) |_| {
-        try writer.writeByte('-');
-    }
+    var separator_len = name_len + 2;
+    try write_n(writer, '-', separator_len);
+    try writer.writeByte('+');
+    separator_len = 12 + 9 + 8;
+    try write_n(writer, '-', separator_len);
+    try writer.writeByte('+');
+    separator_len = 5 * 8 - 1;
+    try write_n(writer, '-', separator_len);
     try writer.writeByte('\n');
 
     for (trials) |stats| {
         try writer.print(
-            "{[name]s: <[name_len]} " ++
-                "{[calls]d: >12} " ++
-                "{[total]e: >12.4} " ++
-                "{[min]d: >14.4} " ++
-                "{[avg]d: >14.4} " ++
-                "{[max]d: >14.4}\n",
+            "{[name]s: <[name_len]} |" ++
+                "{[calls]d: >11} " ++
+                "{[total]d: >8.2} " ++
+                "{[avg]d: >7.2} |" ++
+                "{[min]d: >7.2} " ++
+                "{[p25]d: >7.2} " ++
+                "{[p50]d: >7.2} " ++
+                "{[p75]d: >7.2} " ++
+                "{[max]d: >7.2}\n",
             .{
                 .name = stats.trial.name,
-                .name_len = name_len,
+                .name_len = name_len + 1,
                 .calls = stats.trial_calls,
                 .total = @as(f64, @floatFromInt(stats.trial_nanos)) / 1e9,
-                .min = factor / stats.call_min_ns,
                 .avg = factor / stats.call_avg_ns,
+                .min = factor / stats.call_min_ns,
+                .p25 = factor / stats.percentiles[75],
+                .p50 = factor / stats.percentiles[50],
+                .p75 = factor / stats.percentiles[25],
                 .max = factor / stats.call_max_ns,
             },
         );
@@ -77,60 +107,74 @@ pub fn text_out_latency(writer: *std.Io.Writer, trials: []const zz.TrialStats) !
         max_avg = @max(max_avg, stats.call_avg_ns);
     }
     const groups: u32 = @intFromFloat(std.math.floor(std.math.log(f64, 1000.0, max_avg)));
-    const units = switch (groups) {
-        0 => " ns",
-        1 => " us",
-        2 => " ms",
-        else => " s ",
-    };
-    const factor: f64 = switch (groups) {
-        0 => 1.0,
-        1 => 1e-3,
-        2 => 1e-6,
-        else => 1e-9,
+    _, const longunits, const factor: f64 = switch (groups) {
+        0 => .{ "ns", "nanosec/op", 1.0 },
+        1 => .{ "us", "microsec/op", 1e-3 },
+        2 => .{ "ms", "millisec/op", 1e-6 },
+        else => .{ "s", "seconds/op", 1e-9 },
     };
 
+    try writer.print(text_header, .{
+        .name = "default suite name",
+        .mode = "latency (lower is better)",
+        .longunits = longunits,
+    });
+
     try writer.print(
-        "{[name]s: <[name_len]} " ++
-            "{[calls]s: >12} " ++
-            "{[total]s: >12}{[units]s} " ++
-            "{[min]s: >10}{[units]s} " ++
-            "{[avg]s: >10}{[units]s} " ++
-            "{[max]s: >10}{[units]s}\n",
+        "{[name]s: <[name_len]} |" ++
+            "{[calls]s: >11} " ++
+            "{[total]s: >8} " ++
+            "{[avg]s: >7} |" ++
+            "{[min]s: >7} " ++
+            "{[p25]s: >7} " ++
+            "{[p50]s: >7} " ++
+            "{[p75]s: >7} " ++
+            "{[max]s: >7}\n",
         .{
             .name = "fn",
-            .name_len = name_len,
-            .units = units,
+            .name_len = name_len + 1,
             .calls = "calls",
-            .total = "total",
-            .min = "min",
-            .avg = "avg",
-            .max = "max",
+            .total = "seconds",
+            .avg = "mean",
+            .min = "best",
+            .p25 = "p75",
+            .p50 = "p50",
+            .p75 = "p25",
+            .max = "worst",
         },
     );
 
-    const separator_len = name_len + 1 + 12 + 1 + 12 + 4 + 10 + 4 + 10 + 4 + 10 + 4 + 10 + 3;
-
-    for (0..separator_len) |_| {
-        try writer.writeByte('-');
-    }
+    var separator_len = name_len + 2;
+    try write_n(writer, '-', separator_len);
+    try writer.writeByte('+');
+    separator_len = 12 + 9 + 8;
+    try write_n(writer, '-', separator_len);
+    try writer.writeByte('+');
+    separator_len = 5 * 8 - 1;
+    try write_n(writer, '-', separator_len);
     try writer.writeByte('\n');
 
     for (trials) |stats| {
         try writer.print(
-            "{[name]s: <[name_len]} " ++
-                "{[calls]d: >12} " ++
-                "{[total]e: >15.4} " ++
-                "{[min]d: >13.4} " ++
-                "{[avg]d: >13.4} " ++
-                "{[max]d: >13.4}\n",
+            "{[name]s: <[name_len]} |" ++
+                "{[calls]d: >11} " ++
+                "{[total]d: >8.2} " ++
+                "{[avg]d: >7.2} |" ++
+                "{[min]d: >7.2} " ++
+                "{[p25]d: >7.2} " ++
+                "{[p50]d: >7.2} " ++
+                "{[p75]d: >7.2} " ++
+                "{[max]d: >7.2}\n",
             .{
                 .name = stats.trial.name,
-                .name_len = name_len,
+                .name_len = name_len + 1,
                 .calls = stats.trial_calls,
-                .total = @as(f64, @floatFromInt(stats.trial_nanos)) * factor,
-                .min = stats.call_min_ns * factor,
+                .total = @as(f64, @floatFromInt(stats.trial_nanos)) / 1e9,
                 .avg = stats.call_avg_ns * factor,
+                .min = stats.call_min_ns * factor,
+                .p25 = stats.percentiles[75] * factor,
+                .p50 = stats.percentiles[50] * factor,
+                .p75 = stats.percentiles[25] * factor,
                 .max = stats.call_max_ns * factor,
             },
         );
