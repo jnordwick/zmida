@@ -1,5 +1,7 @@
 const std = @import("std");
-const zz = @import("root.zig");
+const root = @import("root.zig");
+
+const float_div = @import("util.zig").float_div;
 
 const text_header =
     \\{[name]s}
@@ -8,16 +10,13 @@ const text_header =
     \\
 ;
 
-//fn write_count_config(writer: *std.Io.Writer, config: zz.CountConfig) !void {}
-//fn write_timed_config(writer: *std.Io.Writer, config: zz.TimedConfig) !void {}
-
-fn write_n(writer: *std.Io.Writer, x: u8, count: usize) !void {
+fn write_n(writer: *std.Io.Writer, x: []const u8, count: usize) !void {
     for (0..count) |_| {
-        try writer.writeByte(x);
+        try writer.print("{s}", .{x});
     }
 }
 
-pub fn text_out_thruput(writer: *std.Io.Writer, trials: []const zz.TrialStats) !void {
+pub fn text_out_thruput(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.TextOpts) !void {
     var name_len: usize = "fn".len;
     var max_avg: f64 = 0;
     for (trials) |stats| {
@@ -32,17 +31,21 @@ pub fn text_out_thruput(writer: *std.Io.Writer, trials: []const zz.TrialStats) !
         else => .{ "Gops", "Gops/sec", 1e0 },
     };
 
-    try writer.print(text_header, .{
-        .name = "default suite name",
-        .mode = "throughput (higher is better)",
-        .longunits = longunits,
-    });
+    const vbar, const hbar, const plus = if (opts.ascii) .{ "|", "-", "+" } else .{ "\u{2502}", "\u{2500}", "\u{253c}" };
+
+    if (opts.header) {
+        try writer.print(text_header, .{
+            .name = "default suite name",
+            .mode = "throughput (higher is better)",
+            .longunits = longunits,
+        });
+    }
 
     try writer.print(
-        "{[name]s: <[name_len]} |" ++
+        "{[name]s: <[name_len]} {[vbar]s}" ++
             "{[calls]s: >11} " ++
             "{[total]s: >8} " ++
-            "{[avg]s: >7} |" ++
+            "{[avg]s: >7} {[vbar]s}" ++
             "{[min]s: >7} " ++
             "{[p25]s: >7} " ++
             "{[p50]s: >7} " ++
@@ -59,25 +62,26 @@ pub fn text_out_thruput(writer: *std.Io.Writer, trials: []const zz.TrialStats) !
             .p50 = "p50",
             .p75 = "p25",
             .max = "worst",
+            .vbar = vbar,
         },
     );
 
     var separator_len = name_len + 2;
-    try write_n(writer, '-', separator_len);
-    try writer.writeByte('+');
+    try write_n(writer, hbar, separator_len);
+    try write_n(writer, plus, 1);
     separator_len = 12 + 9 + 8;
-    try write_n(writer, '-', separator_len);
-    try writer.writeByte('+');
+    try write_n(writer, hbar, separator_len);
+    try write_n(writer, plus, 1);
     separator_len = 5 * 8 - 1;
-    try write_n(writer, '-', separator_len);
+    try write_n(writer, hbar, separator_len);
     try writer.writeByte('\n');
 
     for (trials) |stats| {
         try writer.print(
-            "{[name]s: <[name_len]} |" ++
+            "{[name]s: <[name_len]} {[vbar]s}" ++
                 "{[calls]d: >11} " ++
                 "{[total]d: >8.2} " ++
-                "{[avg]d: >7.2} |" ++
+                "{[avg]d: >7.2} {[vbar]s}" ++
                 "{[min]d: >7.2} " ++
                 "{[p25]d: >7.2} " ++
                 "{[p50]d: >7.2} " ++
@@ -94,12 +98,14 @@ pub fn text_out_thruput(writer: *std.Io.Writer, trials: []const zz.TrialStats) !
                 .p50 = factor / stats.percentiles[50],
                 .p75 = factor / stats.percentiles[25],
                 .max = factor / stats.call_max_ns,
+                .vbar = vbar,
             },
         );
     }
+    try writer.flush();
 }
 
-pub fn text_out_latency(writer: *std.Io.Writer, trials: []const zz.TrialStats) !void {
+pub fn text_out_latency(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.TextOpts) !void {
     var name_len: usize = "fn".len;
     var max_avg: f64 = 1e-9;
     for (trials) |stats| {
@@ -114,17 +120,21 @@ pub fn text_out_latency(writer: *std.Io.Writer, trials: []const zz.TrialStats) !
         else => .{ "s", "seconds/op", 1e-9 },
     };
 
-    try writer.print(text_header, .{
-        .name = "default suite name",
-        .mode = "latency (lower is better)",
-        .longunits = longunits,
-    });
+    const vbar, const hbar, const plus = if (opts.ascii) .{ "|", "-", "+" } else .{ "\u{2502}", "\u{2500}", "\u{253c}" };
+
+    if (opts.header) {
+        try writer.print(text_header, .{
+            .name = "default suite name",
+            .mode = "latency (lower is better)",
+            .longunits = longunits,
+        });
+    }
 
     try writer.print(
-        "{[name]s: <[name_len]} |" ++
+        "{[name]s: <[name_len]} {[vbar]s}" ++
             "{[calls]s: >11} " ++
             "{[total]s: >8} " ++
-            "{[avg]s: >7} |" ++
+            "{[avg]s: >7} {[vbar]s}" ++
             "{[min]s: >7} " ++
             "{[p25]s: >7} " ++
             "{[p50]s: >7} " ++
@@ -141,25 +151,26 @@ pub fn text_out_latency(writer: *std.Io.Writer, trials: []const zz.TrialStats) !
             .p50 = "p50",
             .p75 = "p25",
             .max = "worst",
+            .vbar = vbar,
         },
     );
 
     var separator_len = name_len + 2;
-    try write_n(writer, '-', separator_len);
-    try writer.writeByte('+');
+    try write_n(writer, hbar, separator_len);
+    try write_n(writer, plus, 1);
     separator_len = 12 + 9 + 8;
-    try write_n(writer, '-', separator_len);
-    try writer.writeByte('+');
+    try write_n(writer, hbar, separator_len);
+    try write_n(writer, plus, 1);
     separator_len = 5 * 8 - 1;
-    try write_n(writer, '-', separator_len);
+    try write_n(writer, hbar, separator_len);
     try writer.writeByte('\n');
 
     for (trials) |stats| {
         try writer.print(
-            "{[name]s: <[name_len]} |" ++
+            "{[name]s: <[name_len]} {[vbar]s}" ++
                 "{[calls]d: >11} " ++
                 "{[total]d: >8.2} " ++
-                "{[avg]d: >7.2} |" ++
+                "{[avg]d: >7.2} {[vbar]s}" ++
                 "{[min]d: >7.2} " ++
                 "{[p25]d: >7.2} " ++
                 "{[p50]d: >7.2} " ++
@@ -176,29 +187,40 @@ pub fn text_out_latency(writer: *std.Io.Writer, trials: []const zz.TrialStats) !
                 .p50 = stats.percentiles[50] * factor,
                 .p75 = stats.percentiles[25] * factor,
                 .max = stats.call_max_ns * factor,
+                .vbar = vbar,
             },
         );
     }
+    try writer.flush();
 }
 
-pub fn csv_out_summary(writer: *std.Io.Writer, trials: []const zz.TrialStats) !void {
-    try writer.print("fn,calls,time,min,avg,max\n", .{});
+pub fn csv_out_summary(writer: *std.Io.Writer, trials: []const root.TrialStats) !void {
+    const cols = [_]u32{ 100, 75, 50, 25, 0 };
+    try writer.print("fn,calls,seconds,mean", .{});
+    for (&cols) |c| {
+        try writer.print(",p{d}", .{c});
+    }
+    try writer.writeByte('\n');
+
     for (trials) |t| {
         try writer.print(
-            "{[name]s},{[calls]d},{[total]d},{[min]d:.4},{[avg]d:.4},{[max]d:.4}\n",
+            "{[name]s},{[calls]d},{[time]d:.4},{[mean]d:.4}",
             .{
                 .name = t.trial.name,
                 .calls = t.trial_calls,
-                .total = t.trial_nanos,
-                .min = t.call_min_ns,
-                .avg = t.call_avg_ns,
-                .max = t.call_max_ns,
+                .time = @as(f64, @floatFromInt(t.trial_nanos)) / 1e9,
+                .mean = t.call_avg_ns,
             },
         );
+        for (&cols) |c| {
+            try writer.print(",{d:.4}", .{t.percentiles[c]});
+        }
+        try writer.writeByte('\n');
     }
+    try writer.flush();
 }
 
-pub fn csv_out_samples(writer: *std.Io.Writer, trials: []const zz.TrialStats) !void {
+pub fn csv_out_samples(writer: *std.Io.Writer, trials: []const root.TrialStats) !void {
     try writer.print("fn,calls,time\n", .{});
     for (trials) |t| {
         for (t.trial.data.items) |s| {
@@ -223,7 +245,7 @@ const gnuplot_template =
     \\     title "mean"
 ;
 
-pub fn gnuplot_out(writer: *std.Io.Writer, trials: []const zz.TrialStats) !void {
+pub fn gnuplot_out(writer: *std.Io.Writer, trials: []const root.TrialStats) !void {
     const suite_title = "Suite Name";
     try writer.print("$Data << EOD\n", .{});
     for (trials) |t| {
@@ -236,4 +258,8 @@ pub fn gnuplot_out(writer: *std.Io.Writer, trials: []const zz.TrialStats) !void 
     }
     try writer.print("EOD\n\n", .{});
     try writer.print(gnuplot_template, .{ .title = suite_title });
+}
+
+test "refAllDecls" {
+    _ = std.testing.refAllDecls(@This());
 }

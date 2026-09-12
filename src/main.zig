@@ -1,7 +1,7 @@
 const std = @import("std");
 const Io = std.Io;
 
-const zz = @import("zmida");
+const zm = @import("zmida");
 
 fn lgamma(x: f64) f64 {
     return std.math.lgamma(f64, x);
@@ -16,8 +16,8 @@ fn log(x: f64) f64 {
 }
 
 fn wait(x: u32) void {
-    const start = zz.util.now();
-    zz.util.pause_until(start + x * 1000 * 1000);
+    const start = zm.util.now();
+    zm.util.pause_until(start + x * 1000 * 1000);
 }
 
 fn printf(io: anytype, comptime fmt: anytype, args: anytype) !void {
@@ -37,14 +37,10 @@ pub fn main(init: std.process.Init) !void {
         x.* = rand.float(f64) * std.math.pi * 8;
     }
 
-    const config = zz.TimedConfig{};
+    zm.gopts.verbose = 1;
+    const config = zm.TimedConfig{};
     const funcs = .{ tgamma, lgamma, std.math.sinh, log };
-    var study = try zz.Study.run(init.gpa, config, funcs, xx);
+    var study = try zm.Study.run(init.gpa, init.io, null, config, funcs, xx);
+    try study.write_text(null, .{});
     defer study.deinit();
-    try study.gen_stats(init.gpa);
-
-    var stdout = std.Io.File.stdout().writer(init.io, &.{});
-    try zz.out.text_out_latency(&stdout.interface, study.stats.items);
-    try zz.out.text_out_thruput(&stdout.interface, study.stats.items);
-    //try zz.out.gnuplot_out(&stdout.interface, &ts);
 }

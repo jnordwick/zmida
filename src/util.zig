@@ -1,4 +1,6 @@
 const std = @import("std");
+const root = @import("root.zig");
+pub const Env = root.Env;
 pub const dno = std.mem.doNotOptimizeAway;
 
 const clock_nanosleep = std.os.linux.clock_nanosleep;
@@ -7,6 +9,13 @@ const timespec = std.os.linux.timespec;
 
 pub inline fn ns_from_secs(x: f64) u64 {
     return @intFromFloat(1e9 * x);
+}
+
+pub inline fn is_tuple(T: type) bool {
+    return switch (@typeInfo(T)) {
+        .@"struct" => |s| s.is_tuple,
+        else => false,
+    };
 }
 
 pub inline fn now() u64 {
@@ -88,6 +97,18 @@ fn WhoAreYou(x: anytype) type {
 
 pub fn get_fname(comptime func: anytype) []const u8 {
     return WhoAreYou(func).who;
+}
+
+pub fn get_file(env: Env, fname: ?[]const u8, suffix: []const u8) !std.Io.File {
+    if (fname == null) {
+        return std.Io.File.stdout();
+    }
+    const len = fname.?.len + suffix.len;
+    if (len >= 1024) @panic("filename to long");
+    var name: [1024]u8 = undefined;
+    std.mem.copyForwards(u8, name[0..], fname.?);
+    std.mem.copyForwards(u8, name[fname.?.len..], suffix);
+    return std.Io.Dir.cwd().createFile(env.io, name[0..len], .{});
 }
 
 const tt = std.testing;
