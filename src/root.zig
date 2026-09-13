@@ -49,11 +49,13 @@ pub const TextOpts = struct {
 
 pub const SummaryOpts = struct {
     format: enum { csv } = .csv,
+    separator: u8 = ',',
     pctiles: []const u32 = &[_]u32{ 0, 25, 50, 75, 100 },
 };
 
-pub const DetailsOpts = struct {
+pub const SamplesOpts = struct {
     format: enum { csv } = .csv,
+    separator: u8 = ',',
 };
 
 pub const GnuplotOpts = struct {
@@ -123,34 +125,34 @@ pub const Study = struct {
         defer if (fname != null) file.close(this.env.io);
         var writer = file.writer(this.env.io, &.{});
         if (opts.mode == .lat) {
-            try out.text_out_latency(&writer.interface, this.stats.items, opts);
+            try out.text_latency(&writer.interface, this.stats.items, opts);
         } else {
-            try out.text_out_thruput(&writer.interface, this.stats.items, opts);
+            try out.text_thruput(&writer.interface, this.stats.items, opts);
         }
     }
 
-    pub fn write_summary(this: *@This(), fname: ?[]const u8, _: SummaryOpts) !void {
+    pub fn write_summary(this: *@This(), fname: ?[]const u8, opts: SummaryOpts) !void {
         try this.statistics();
         const file = try util.get_file(this.env, fname, "-summary.csv");
         defer if (fname != null) file.close(this.env.io);
         var writer = file.writer(this.env.io, &.{});
-        try out.csv_out_summary(&writer.interface, this.stats.items);
+        try out.csv_summary(&writer.interface, this.stats.items, opts);
     }
 
-    pub fn write_samples(this: *@This(), fname: ?[]const u8, _: DetailsOpts) !void {
+    pub fn write_samples(this: *@This(), fname: ?[]const u8, opts: SamplesOpts) !void {
         this.statistics();
         const file = try util.get_file(this.env, fname, "-samples.csv");
         defer if (fname != null) file.close(this.env.io);
         var writer = file.writer(this.env.io, &.{});
-        try out.csv_out_samples(&writer.interface, this.stats.items);
+        try out.csv_samples(&writer.interface, this.stats.items, opts);
     }
 
-    pub fn write_gnuplot(this: *@This(), fname: ?[]const u8, _: GnuplotOpts) !void {
+    pub fn write_gnuplot(this: *@This(), fname: ?[]const u8, opts: GnuplotOpts) !void {
         try this.statistics();
         const file = try util.get_file(this.env, fname, ".gp");
         defer if (fname != null) file.close(this.env.io);
         var writer = file.writer(this.env.io, &.{});
-        try out.gnuplot_out(&writer.interface, this.stats.items);
+        try out.gnuplot(&writer.interface, this.stats.items, opts);
     }
 };
 

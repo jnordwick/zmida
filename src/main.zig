@@ -41,6 +41,7 @@ pub fn main(init: std.process.Init) !void {
     const config = zm.TimedConfig{};
     const funcs = .{ tgamma, lgamma, std.math.sinh, log };
     var study = try zm.Study.run(init.gpa, init.io, null, config, funcs, xx);
-    try study.write_text(null, .{});
+    try study.write_summary(null, .{ .separator = '\t' });
+    //try study.write_gnuplot(null, .{});
     defer study.deinit();
 }

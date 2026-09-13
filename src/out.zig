@@ -18,7 +18,7 @@ fn write_n(writer: *std.Io.Writer, x: []const u8, count: usize) !void {
     }
 }
 
-pub fn text_out_thruput(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.TextOpts) !void {
+pub fn text_thruput(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.TextOpts) !void {
     var name_len: usize = "fn".len;
     var max_avg: f64 = 0;
     for (trials) |stats| {
@@ -109,7 +109,7 @@ pub fn text_out_thruput(writer: *std.Io.Writer, trials: []const root.TrialStats,
     try writer.flush();
 }
 
-pub fn text_out_latency(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.TextOpts) !void {
+pub fn text_latency(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.TextOpts) !void {
     var name_len: usize = "fn".len;
     var max_avg: f64 = 1e-9;
     for (trials) |stats| {
@@ -200,9 +200,9 @@ pub fn text_out_latency(writer: *std.Io.Writer, trials: []const root.TrialStats,
     try writer.flush();
 }
 
-pub fn csv_out_summary(writer: *std.Io.Writer, trials: []const root.TrialStats) !void {
+pub fn csv_summary(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.SummaryOpts) !void {
     const cols = [_]u32{ 100, 75, 50, 25, 0 };
-    try writer.print("fn,calls,seconds,mean", .{});
+    try writer.print("fn{[sep]c}calls{[sep]c}seconds{[sep]c}mean", .{ .sep = opts.separator });
     for (&cols) |c| {
         try writer.print(",p{d}", .{c});
     }
@@ -210,60 +210,57 @@ pub fn csv_out_summary(writer: *std.Io.Writer, trials: []const root.TrialStats) 
 
     for (trials) |t| {
         try writer.print(
-            "{[name]s},{[calls]d},{[time]d:.4},{[mean]d:.4}",
+            "{[name]s}{[sep]c}{[calls]d}{[sep]c}{[time]d:.4}{[sep]c}{[mean]d:.4}",
             .{
                 .name = t.trial.name,
                 .calls = t.trial_calls,
-                .time = @as(f64, @floatFromInt(t.trial_nanos)) / 1e9,
+                .time = t.trial_nanos / 1e9,
                 .mean = t.call_avg_ns,
+                .sep = opts.separator,
             },
         );
         for (&cols) |c| {
-            try writer.print(",{d:.4}", .{t.percentiles[c]});
+            try writer.print("{[sep]c}{[v]d:.4}", .{
+                .v = t.percentiles[c],
+                .sep = opts.separator,
+            });
         }
         try writer.writeByte('\n');
     }
     try writer.flush();
 }
 
-pub fn csv_out_samples(writer: *std.Io.Writer, trials: []const root.TrialStats) !void {
-    try writer.print("fn,calls,time\n", .{});
+pub fn csv_samples(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.SampleOpts) !void {
+    try writer.print("fn{[sep]c}calls{[sep]c}time\n", .{ .sep = opts.separator });
     for (trials) |t| {
         for (t.trial.data.items) |s| {
-            try writer.print("{s},{d},{d}\n", .{ t.trial.name, s.calls, s.nanos });
+            try writer.print("{[name]s}{[sep]c}{[calls]d}{[sep]c}{[nanos]d}\n", .{
+                .name = t.trial.name,
+                .calls = s.calls,
+                .nanos = s.nanos,
+                .sep = opts.separator,
+            });
         }
     }
 }
 
-const gnuplot_template =
-    \\set title "{[title]s}"
-    \\set ylabel "ops/sec"
-    \\set grid y
-    \\set style fill solid 0.5 border
-    \\set boxwidth 0.1
-    \\set autoscale xfix
-    \\set offsets 0.5, 0.5, 0, 0
-    \\set xtics rotate by -45
-    \\plot $Data using 0:($4-$5):2:3:($4+$5):xticlabels(1) \
-    \\     with candlesticks linecolor rgb "#333333" fill solid 0.4 \
-    \\     title "min/max & stdev", \
-    \\     $Data using 0:4 with points pointtype 7 pointsize 1.2 linecolor rgb "#d62728" \
-    \\     title "mean"
-;
+const gnuplot_template = @embedFile("template.gp");
 
-pub fn gnuplot_out(writer: *std.Io.Writer, trials: []const root.TrialStats) !void {
-    const suite_title = "Suite Name";
+pub fn gnuplot(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.GnuplotOpts) !void {
+    const suite_title = opts.title orelse "zmida";
+    const units = "Kops/sec";
+    const pctiles = [_]u32{ 0, 10, 25, 50, 75, 90, 100 };
+
     try writer.print("$Data << EOD\n", .{});
     for (trials) |t| {
-        try writer.print("{[name]s: <20} {[min]d: <12.4} {[max]d: <12.4} {[avg]d: <12.4}\n", .{
-            .name = t.trial.name,
-            .min = 1e9 / t.call_max_ns,
-            .max = 1e9 / t.call_min_ns,
-            .avg = 1e9 / t.call_avg_ns,
-        });
+        try writer.print("{[name]s} {[mean]d:.4}", .{ .name = t.trial.name, .mean = 1e6 / t.call_avg_ns });
+        for (pctiles) |p| {
+            try writer.print(" {d:.4}", .{1e6 / t.percentiles[p]});
+        }
+        try writer.writeByte('\n');
     }
     try writer.print("EOD\n\n", .{});
-    try writer.print(gnuplot_template, .{ .title = suite_title });
+    try writer.print(gnuplot_template, .{ .title = suite_title, .units = units });
 }
 
 test "refAllDecls" {
