@@ -43,6 +43,8 @@ A lot of the top level functions have some comptime
 
 This are the next few thigs I want to work on:
 
+- make some simple functions for most basic "bench this"
+- add adaptive mode that run by count trials by estimating workload
 - performance counters (instr count, cache, etc)
 - better documentation
 - single argument input (no slice, just a single tuple)
