@@ -187,7 +187,7 @@ pub const Trial = struct {
 pub const Sample = struct {
     ord: u64,
     calls: u64,
-    nanos: u64,
+    nanos: f64,
 };
 
 test "refalldecls" {
