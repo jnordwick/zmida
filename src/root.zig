@@ -103,7 +103,7 @@ pub const Study = struct {
         verbose(1, "Running study {s}\n", this.name);
         verbose(1, "{s}: {any}\n", .{ @typeName(@TypeOf(config)), config });
         inline for (0..funcs.len) |i| {
-            verbose(1, "  Running trial {d}/{d}\n", .{ i, funcs.len });
+            verbose(1, "  Running trial {d}/{d}\n", .{ i + 1, funcs.len });
             const t = try Trial.run(this.env, config, funcs[i], args);
             try this.trials.append(t);
         }

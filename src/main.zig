@@ -1,7 +1,24 @@
 const std = @import("std");
-const Io = std.Io;
-
 const zm = @import("zmida");
+
+pub fn main(init: std.process.Init) !void {
+    const N = 100;
+    var xosh: std.Random.Xoshiro256 = .init(0);
+    var rand = xosh.random();
+    var xx: [N]f64 = undefined;
+    for (&xx) |*x| {
+        x.* = rand.float(f64) * 20;
+    }
+    const funcs = .{ lgamma, tgamma };
+
+    const config = zm.TimedConfig{};
+    zm.setGlobalOpts(.{ .verbose = 1, .use_tsc = true });
+    var study = try zm.Study.run(init.gpa, init.io, null, config, funcs, xx);
+    try study.write_text(null, .{ .mode = .lat });
+    try study.write_summary("example", .{ .separator = '\t' });
+    try study.write_gnuplot("example", .{});
+    defer study.deinit();
+}
 
 fn lgamma(x: f64) f64 {
     return std.math.lgamma(f64, x);
@@ -26,22 +43,4 @@ fn printf(io: anytype, comptime fmt: anytype, args: anytype) !void {
 
     try writer.interface.print(fmt, args);
     try writer.interface.flush();
-}
-
-pub fn main(init: std.process.Init) !void {
-    var xosh: std.Random.Xoshiro256 = .init(0);
-    var rand = xosh.random();
-    const N = 100;
-    var xx: [N]f64 = undefined;
-    for (&xx) |*x| {
-        x.* = rand.float(f64) * std.math.pi * 8;
-    }
-
-    zm.setGlobalOpts(.{ .verbose = 0, .use_tsc = true });
-    const config = zm.TimedConfig{};
-    const funcs = .{ tgamma, lgamma, std.math.sinh, log };
-    var study = try zm.Study.run(init.gpa, init.io, null, config, funcs, xx);
-    try study.write_summary(null, .{ .separator = '\t' });
-    //try study.write_gnuplot(null, .{});
-    defer study.deinit();
 }
