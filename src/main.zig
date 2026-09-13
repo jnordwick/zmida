@@ -37,7 +37,7 @@ pub fn main(init: std.process.Init) !void {
         x.* = rand.float(f64) * std.math.pi * 8;
     }
 
-    zm.gopts.verbose = 1;
+    zm.setGlobalOpts(.{ .verbose = 0, .use_tsc = true });
     const config = zm.TimedConfig{};
     const funcs = .{ tgamma, lgamma, std.math.sinh, log };
     var study = try zm.Study.run(init.gpa, init.io, null, config, funcs, xx);

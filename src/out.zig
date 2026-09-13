@@ -1,11 +1,13 @@
 const std = @import("std");
 const root = @import("root.zig");
+const util = @import("util.zig");
 
 const float_div = @import("util.zig").float_div;
 
 const text_header =
     \\{[name]s}
     \\units: {[longunits]s}
+    \\clock: {[clkname]} @ {[clkfreq]d} Hz
     \\mode: {[mode]s}
     \\
 ;
@@ -38,6 +40,8 @@ pub fn text_out_thruput(writer: *std.Io.Writer, trials: []const root.TrialStats,
             .name = "default suite name",
             .mode = "throughput (higher is better)",
             .longunits = longunits,
+            .clkname = util.Clock.clksrc,
+            .clkfreq = util.Clock.hz,
         });
     }
 
@@ -127,6 +131,8 @@ pub fn text_out_latency(writer: *std.Io.Writer, trials: []const root.TrialStats,
             .name = "default suite name",
             .mode = "latency (lower is better)",
             .longunits = longunits,
+            .clkname = util.Clock.clksrc,
+            .clkfreq = util.Clock.hz,
         });
     }
 

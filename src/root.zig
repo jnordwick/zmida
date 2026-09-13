@@ -9,10 +9,12 @@ const ArgsTuple = std.meta.ArgsTuple;
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 
-pub var gopts = struct {
-    verbose: u32 = 1,
-    use_rdtsc: bool = false,
-}{};
+pub const GlobalOpts = struct {
+    verbose: u32 = 0,
+    use_tsc: bool = false,
+};
+
+pub var gopts = GlobalOpts{};
 
 pub fn verbose(comptime lev: u32, comptime fmt: []const u8, p: anytype) void {
     if (lev <= gopts.verbose) {
@@ -62,6 +64,11 @@ pub const Env = struct {
     alloc: Allocator,
     io: Io,
 };
+
+pub fn setGlobalOpts(opts: GlobalOpts) void {
+    gopts = opts;
+    util.Clock.setup(if (gopts.use_tsc) .tsc else .monotonic);
+}
 
 pub const Study = struct {
     env: Env,

@@ -31,7 +31,7 @@ pub const Clock = struct {
             if (freq == null) @panic("system does not expose tsc frequency");
             hz = freq.?;
         }
-        nspt = 1e9 / hz;
+        nspt = 1e9 / @as(f64, @floatFromInt(hz));
     }
 };
 
