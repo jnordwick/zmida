@@ -1,8 +1,6 @@
 const std = @import("std");
 const root = @import("root.zig");
-const util = @import("util.zig");
-
-const float_div = @import("util.zig").float_div;
+const time = @import("time.zig");
 
 const text_header =
     \\{[name]s}
@@ -40,8 +38,8 @@ pub fn text_thruput(writer: *std.Io.Writer, trials: []const root.TrialStats, opt
             .name = "default suite name",
             .mode = "throughput (higher is better)",
             .longunits = longunits,
-            .clkname = util.Clock.clksrc,
-            .clkfreq = util.Clock.hz,
+            .clkname = time.Clock.clksrc,
+            .clkfreq = time.Clock.hz,
         });
     }
 
@@ -131,8 +129,8 @@ pub fn text_latency(writer: *std.Io.Writer, trials: []const root.TrialStats, opt
             .name = "default suite name",
             .mode = "latency (lower is better)",
             .longunits = longunits,
-            .clkname = util.Clock.clksrc,
-            .clkfreq = util.Clock.hz,
+            .clkname = time.Clock.clksrc,
+            .clkfreq = time.Clock.hz,
         });
     }
 
@@ -230,7 +228,7 @@ pub fn csv_summary(writer: *std.Io.Writer, trials: []const root.TrialStats, opts
     try writer.flush();
 }
 
-pub fn csv_samples(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.SampleOpts) !void {
+pub fn csv_samples(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.SamplesOpts) !void {
     try writer.print("fn{[sep]c}calls{[sep]c}time\n", .{ .sep = opts.separator });
     for (trials) |t| {
         for (t.trial.data.items) |s| {

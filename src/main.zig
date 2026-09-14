@@ -15,8 +15,8 @@ pub fn main(init: std.process.Init) !void {
     zm.setGlobalOpts(.{ .verbose = 1, .use_tsc = true });
     var study = try zm.Study.run(init.gpa, init.io, null, config, funcs, xx);
     try study.write_text(null, .{ .mode = .lat });
-    try study.write_summary("example", .{ .separator = '\t' });
-    try study.write_gnuplot("example", .{});
+    try study.write_summary(null, .{ .separator = '\t' });
+    //    try study.write_gnuplot("example", .{});
     defer study.deinit();
 }
 

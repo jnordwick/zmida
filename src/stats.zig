@@ -1,7 +1,6 @@
 const std = @import("std");
 const zz = @import("root.zig");
 const util = @import("util.zig");
-const float_div = util.float_div;
 const Allocator = std.mem.Allocator;
 
 /// a batch is the atomic level for the stats. any stats lower than
@@ -47,7 +46,7 @@ pub const TrialStats = struct {
 fn latencies(alloc: Allocator, samples: []zz.Sample) []f64 {
     var s = alloc.alloc(f64, samples.len) catch @panic("oom");
     for (samples, 0..samples.len) |x, i| {
-        s[i] = float_div(f64, x.nanos, x.calls);
+        s[i] = util.float_div(f64, x.nanos, x.calls);
     }
     return s;
 }

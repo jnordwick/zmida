@@ -1,6 +1,7 @@
 const std = @import("std");
 const root = @import("root.zig");
 pub const util = @import("util.zig");
+pub const time = @import("time.zig");
 pub const stats = @import("stats.zig");
 pub const out = @import("out.zig");
 const ArrayList = std.array_list.Managed;
@@ -11,8 +12,8 @@ const CountConfig = root.CountConfig;
 const Trial = root.Trial;
 const Env = root.Env;
 const Sample = root.Sample;
-const Clock = util.Clock;
-const Timer = util.Timer;
+const Clock = time.Clock;
+const Timer = time.Timer;
 
 inline fn call(func: anytype, arg: anytype, comptime as_tuple: bool) void {
     util.dno(arg);
@@ -35,7 +36,7 @@ pub fn set_bool(start: *std.atomic.Value(bool), stop: *std.atomic.Value(bool), n
     while (!start.load(.acquire)) {
         std.atomic.spinLoopHint();
     }
-    util.pause_for(nanos);
+    time.pause_for(nanos);
     stop.store(true, .release);
 }
 

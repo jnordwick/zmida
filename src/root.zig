@@ -4,6 +4,7 @@ pub const TrialStats = stats.TrialStats;
 pub const out = @import("out.zig");
 const util = @import("util.zig");
 const runners = @import("runners.zig");
+const time = @import("time.zig");
 const ArrayList = std.array_list.Managed;
 const ArgsTuple = std.meta.ArgsTuple;
 const Allocator = std.mem.Allocator;
@@ -69,7 +70,7 @@ pub const Env = struct {
 
 pub fn setGlobalOpts(opts: GlobalOpts) void {
     gopts = opts;
-    util.Clock.setup(if (gopts.use_tsc) .tsc else .monotonic);
+    time.Clock.setup(if (gopts.use_tsc) .tsc else .monotonic);
 }
 
 pub const Study = struct {
