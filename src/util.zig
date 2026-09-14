@@ -70,14 +70,14 @@ pub inline fn timespec_from_nanos(nanos: u64) timespec {
 
 pub fn pause_for(sleep_nanos: u64) void {
     var sleep_ts = timespec_from_nanos(sleep_nanos);
-    while (clock_nanosleep(.MONOTONIC, .{ .ABSTIME = false }, &sleep_ts, &sleep_ts) != 0) {}
+    while (clock_nanosleep(.MONOTONIC_RAW, .{ .ABSTIME = false }, &sleep_ts, &sleep_ts) != 0) {}
 }
 
 pub fn pause_until(stop_nanos: u64) void {
     var max_wakeup: usize = 10;
     const sleep_min = 5 * 1000 * 1000; // 1 millis
     var sleep_ts = timespec_from_nanos(stop_nanos - sleep_min);
-    while (clock_nanosleep(.MONOTONIC, .{ .ABSTIME = true }, &sleep_ts, &sleep_ts) != 0) {
+    while (clock_nanosleep(.MONOTONIC_RAW, .{ .ABSTIME = true }, &sleep_ts, &sleep_ts) != 0) {
         // when too many wakeups, fall down to polling behavior
         if (max_wakeup == 0) break;
         max_wakeup -= 1;
@@ -89,7 +89,7 @@ pub fn pause_until(stop_nanos: u64) void {
 
 pub fn now() u64 {
     var ts: timespec = undefined;
-    const ret = clock_gettime(.MONOTONIC, &ts);
+    const ret = clock_gettime(.MONOTONIC_RAW, &ts);
     if (ret != 0) @panic("clock_gettime failed");
     return nanos_from_timespec(ts);
 }
