@@ -28,8 +28,8 @@ pub fn verbose(comptime lev: u32, comptime fmt: []const u8, p: anytype) void {
 /// trial with set number of samples and set number of sweeps per sample
 pub const CountConfig = struct {
     warmup_sweeps: u32 = 5000,
-    trial_samples: u32 = 10000,
-    sample_sweeps: u32 = 20,
+    trial_samples: u32 = 250,
+    sample_sweeps: u32 = 1000,
 };
 
 pub const TimedConfig = struct {
@@ -110,7 +110,7 @@ pub const Study = struct {
         };
         if (gopts.perf) {
             const events = [_]perf.Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total };
-            verbose(1, "Installing performance counters", .{});
+            verbose(1, "Installing performance counters\n", .{});
             const p = try this.env.alloc.create(perf.PerfEvent);
             p.* = .{};
             try p.add_many(&events);
@@ -132,11 +132,11 @@ pub const Study = struct {
         verbose(1, "Generating stats for study {s}\n", this.name);
         for (this.trials.items) |*t| {
             const st = t.statistics(this.env);
-            std.debug.print("\n", .{});
-            std.debug.print("enabled {} running {}\n", .{ st.perf_time_enabled, st.perf_time_running });
-            std.debug.print("instr {} cycles {}\n", .{ st.perf_cpu_cycles, st.perf_instructions });
-            std.debug.print("branch miss {} total {}\n", .{ st.perf_branch_miss, st.perf_branch_total });
-            std.debug.print("\n", .{});
+            // std.debug.print("\n", .{});
+            // std.debug.print("enabled {} running {}\n", .{ st.perf_time_enabled, st.perf_time_running });
+            // std.debug.print("instr {} cycles {}\n", .{ st.perf_cpu_cycles, st.perf_instructions });
+            // std.debug.print("branch miss {} total {}\n", .{ st.perf_branch_miss, st.perf_branch_total });
+            // std.debug.print("\n", .{});
             try this.stats.append(st);
         }
     }
@@ -147,9 +147,9 @@ pub const Study = struct {
         defer if (fname != null) file.close(this.env.io);
         var writer = file.writer(this.env.io, &.{});
         if (opts.mode == .lat) {
-            try out.text_latency(&writer.interface, this.stats.items, opts);
+            try out.text_latency(&writer.interface, this.name, this.stats.items, opts);
         } else {
-            try out.text_thruput(&writer.interface, this.stats.items, opts);
+            try out.text_thruput(&writer.interface, this.name, this.stats.items, opts);
         }
     }
 

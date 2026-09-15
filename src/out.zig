@@ -1,6 +1,7 @@
 const std = @import("std");
 const root = @import("root.zig");
 const time = @import("time.zig");
+const float_div = @import("util.zig").float_div;
 
 const text_header =
     \\{[name]s}
@@ -16,7 +17,12 @@ fn write_n(writer: *std.Io.Writer, x: []const u8, count: usize) !void {
     }
 }
 
-pub fn text_thruput(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.TextOpts) !void {
+pub fn text_thruput(
+    writer: *std.Io.Writer,
+    title: []const u8,
+    trials: []const root.TrialStats,
+    opts: root.TextOpts,
+) !void {
     var name_len: usize = "fn".len;
     var max_avg: f64 = 0;
     for (trials) |stats| {
@@ -31,16 +37,18 @@ pub fn text_thruput(writer: *std.Io.Writer, trials: []const root.TrialStats, opt
         else => .{ "Gops", "Gops/sec", 1e0 },
     };
 
-    const vbar, const hbar, const plus = if (opts.ascii) .{ "|", "-", "+" } else .{ "\u{2502}", "\u{2500}", "\u{253c}" };
+    const vbar, const hbar, const plus =
+        if (opts.ascii) .{ "|", "-", "+" } else .{ "\u{2502}", "\u{2500}", "\u{253c}" };
 
     if (opts.header) {
         try writer.print(text_header, .{
-            .name = "default suite name",
+            .name = title,
             .mode = "throughput (higher is better)",
             .longunits = longunits,
             .clkname = time.Clock.clksrc,
             .clkfreq = time.Clock.hz,
         });
+        try writer.writeByte('\n');
     }
 
     try writer.print(
@@ -105,9 +113,87 @@ pub fn text_thruput(writer: *std.Io.Writer, trials: []const root.TrialStats, opt
         );
     }
     try writer.flush();
+    try writer.writeByte('\n');
+    try writer.writeByte('\n');
+    try text_perf(writer, trials, opts);
 }
 
-pub fn text_latency(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.TextOpts) !void {
+pub fn text_perf(
+    writer: *std.Io.Writer,
+    trials: []const root.TrialStats,
+    opts: root.TextOpts,
+) !void {
+    var max_name_len: usize = "fn".len;
+    for (trials) |t| {
+        max_name_len = @max(max_name_len, t.trial.name.len);
+    }
+    const vbar, const hbar, const plus =
+        if (opts.ascii) .{ "|", "-", "+" } else .{ "\u{2502}", "\u{2500}", "\u{253c}" };
+
+    try writer.print(
+        "{[name]s: <[max_name_len]} {[vbar]s}" ++
+            "{[ipc]s: >7} " ++
+            "{[inst]s: >10} " ++
+            "{[cyc]s: >10} {[vbar]s}" ++
+            "{[brmrt]s: >8} " ++
+            "{[brmiss]s: >10} " ++
+            "{[brtot]s: >10}\n",
+        .{
+            .name = "fn",
+            .max_name_len = max_name_len + 1,
+            .ipc = "ipc",
+            .inst = "insts",
+            .cyc = "cycles",
+            .brmrt = "miss/M",
+            .brmiss = "misses",
+            .brtot = "branches",
+            .vbar = vbar,
+        },
+    );
+
+    var separator_len = max_name_len + 2;
+    try write_n(writer, hbar, separator_len);
+    try write_n(writer, plus, 1);
+    separator_len = 8 + 2 * 11;
+    try write_n(writer, hbar, separator_len);
+    try write_n(writer, plus, 1);
+    separator_len = 8 + 2 * 11;
+    try write_n(writer, hbar, separator_len);
+    try writer.writeByte('\n');
+
+    for (trials) |stats| {
+        const ipc = float_div(f64, stats.perf_instructions, stats.perf_cpu_cycles);
+        const brmsrt = 1e6 * float_div(f64, stats.perf_branch_miss, stats.perf_branch_total);
+        try writer.print(
+            "{[name]s: <[max_name_len]} {[vbar]s}" ++
+                "{[ipc]d: >7.3} " ++
+                "{[inst]d: >10.1} " ++
+                "{[cyc]d: >10.1} {[vbar]s}" ++
+                "{[brmsrt]d: >8.2} " ++
+                "{[brmiss]d: >10.3} " ++
+                "{[brtot]d: >10.1}\n",
+            .{
+                .name = stats.trial.name,
+                .max_name_len = max_name_len + 1,
+                .ipc = ipc,
+                .inst = float_div(f64, stats.perf_instructions, stats.trial_calls),
+                .cyc = float_div(f64, stats.perf_cpu_cycles, stats.trial_calls),
+                .brmsrt = brmsrt,
+                .brmiss = float_div(f64, stats.perf_branch_miss, stats.trial_calls),
+                .brtot = float_div(f64, stats.perf_branch_total, stats.trial_calls),
+                .vbar = vbar,
+            },
+        );
+    }
+    try writer.flush();
+}
+
+pub fn text_latency(
+    writer: *std.Io.Writer,
+    title: []const u8,
+    trials: []const root.TrialStats,
+    opts: root.TextOpts,
+) !void {
     var name_len: usize = "fn".len;
     var max_avg: f64 = 1e-9;
     for (trials) |stats| {
@@ -126,12 +212,13 @@ pub fn text_latency(writer: *std.Io.Writer, trials: []const root.TrialStats, opt
 
     if (opts.header) {
         try writer.print(text_header, .{
-            .name = "default suite name",
+            .name = title,
             .mode = "latency (lower is better)",
             .longunits = longunits,
             .clkname = time.Clock.clksrc,
             .clkfreq = time.Clock.hz,
         });
+        try writer.writeByte('\n');
     }
 
     try writer.print(
@@ -196,9 +283,16 @@ pub fn text_latency(writer: *std.Io.Writer, trials: []const root.TrialStats, opt
         );
     }
     try writer.flush();
+    try writer.writeByte('\n');
+    try writer.writeByte('\n');
+    try text_perf(writer, trials, opts);
 }
 
-pub fn csv_summary(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.SummaryOpts) !void {
+pub fn csv_summary(
+    writer: *std.Io.Writer,
+    trials: []const root.TrialStats,
+    opts: root.SummaryOpts,
+) !void {
     const cols = [_]u32{ 100, 75, 50, 25, 0 };
     try writer.print("fn{[sep]c}calls{[sep]c}seconds{[sep]c}mean", .{ .sep = opts.separator });
     for (&cols) |c| {
@@ -228,7 +322,11 @@ pub fn csv_summary(writer: *std.Io.Writer, trials: []const root.TrialStats, opts
     try writer.flush();
 }
 
-pub fn csv_samples(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.SamplesOpts) !void {
+pub fn csv_samples(
+    writer: *std.Io.Writer,
+    trials: []const root.TrialStats,
+    opts: root.SamplesOpts,
+) !void {
     try writer.print("fn{[sep]c}calls{[sep]c}time\n", .{ .sep = opts.separator });
     for (trials) |t| {
         for (t.trial.data.items) |s| {
@@ -240,11 +338,16 @@ pub fn csv_samples(writer: *std.Io.Writer, trials: []const root.TrialStats, opts
             });
         }
     }
+    try writer.flush();
 }
 
 const gnuplot_template = @embedFile("template.gp");
 
-pub fn gnuplot(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: root.GnuplotOpts) !void {
+pub fn gnuplot(
+    writer: *std.Io.Writer,
+    trials: []const root.TrialStats,
+    opts: root.GnuplotOpts,
+) !void {
     const suite_title = opts.title orelse "zmida";
     const units = "Kops/sec";
     const pctiles = [_]u32{ 0, 10, 25, 50, 75, 90, 100 };
@@ -259,6 +362,7 @@ pub fn gnuplot(writer: *std.Io.Writer, trials: []const root.TrialStats, opts: ro
     }
     try writer.print("EOD\n\n", .{});
     try writer.print(gnuplot_template, .{ .title = suite_title, .units = units });
+    try writer.flush();
 }
 
 test "refAllDecls" {

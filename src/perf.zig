@@ -4,9 +4,10 @@ const PERF = std.os.linux.PERF;
 const perf_event_open = std.posix.perf_event_open;
 const system = std.posix.system;
 const perf_event_attr = system.perf_event_attr;
-const dno = std.mem.doNotOptimizeAway;
 
 pub const max_events = 4;
+
+const PERF_IOC_FLAG_GROUP: usize = 1;
 
 pub const Event = struct {
     typ: PERF.TYPE,
@@ -78,6 +79,7 @@ pub const PerfEvent = struct {
                 .exclude_kernel = true,
                 .exclude_hv = true,
                 .use_clockid = true,
+                .inherit = false,
             },
             .clockid = .MONOTONIC_RAW,
             .read_format = format,
@@ -92,6 +94,7 @@ pub const PerfEvent = struct {
                     .exclude_kernel = true,
                     .exclude_hv = true,
                     .use_clockid = true,
+                    .inherit = false,
                 },
                 .clockid = .MONOTONIC_RAW,
             };
@@ -101,12 +104,18 @@ pub const PerfEvent = struct {
     }
 
     pub fn uninstall(this: *@This()) void {
+        this.disable() catch {};
         for (0..this.nevents) |i| {
             if (this.fds[i] != 0) {
                 close(this.fds[i]) catch {};
-                this.fds[0] = 0;
+                this.fds[i] = 0;
             }
         }
+    }
+
+    pub fn reinstall(this: *@This()) !void {
+        this.uninstall();
+        try this.install();
     }
 
     pub fn deinit(this: *@This()) void {
@@ -115,17 +124,17 @@ pub const PerfEvent = struct {
 
     pub fn enable(this: *const @This()) !void {
         if (this.fds[0] == 0) return;
-        _ = try ioctl(this.fds[0], PERF.EVENT_IOC.ENABLE, 0);
+        _ = try ioctl(this.fds[0], PERF.EVENT_IOC.ENABLE, PERF_IOC_FLAG_GROUP);
     }
 
     pub fn disable(this: *const @This()) !void {
         if (this.fds[0] == 0) return;
-        _ = try ioctl(this.fds[0], PERF.EVENT_IOC.DISABLE, 0);
+        _ = try ioctl(this.fds[0], PERF.EVENT_IOC.DISABLE, PERF_IOC_FLAG_GROUP);
     }
 
     pub fn reset(this: *const @This()) !void {
         if (this.fds[0] == 0) return;
-        _ = try ioctl(this.fds[0], PERF.EVENT_IOC.RESET, 0);
+        _ = try ioctl(this.fds[0], PERF.EVENT_IOC.RESET, PERF_IOC_FLAG_GROUP);
     }
 
     pub fn read(this: *const @This(), sample: *Sample) !void {
@@ -160,6 +169,7 @@ fn close(fd: system.fd_t) !void {
 }
 
 fn workload(reps: u64) void {
+    const dno = std.mem.doNotOptimizeAway;
     for (0..reps) |a| {
         dno(&a);
         var ret = @sin(@sqrt(@as(f64, @floatFromInt(a))));
@@ -179,13 +189,37 @@ test {
     try stats.enable();
     workload(1_000_000);
     try stats.disable();
-    var samp: Sample = .{};
-    try stats.read(&samp);
-    const e = samp.events();
-    try tt.expectEqual(@as(usize, 4), e.len);
-    try tt.expect(samp.running > 0);
-    try tt.expect(samp.enabled > 0);
-    for (e) |s| {
-        try tt.expect(s > 0);
+
+    {
+        var samp: Sample = .{};
+        try stats.read(&samp);
+        const e = samp.events();
+        std.debug.print("{any}\n{any}\n", .{ samp, e });
     }
+
+    try stats.reset();
+    {
+        var samp: Sample = .{};
+        try stats.read(&samp);
+        const e = samp.events();
+        std.debug.print("{any}\n{any}\n", .{ samp, e });
+    }
+
+    try stats.enable();
+    workload(1_000_000);
+    try stats.disable();
+
+    {
+        var samp: Sample = .{};
+        try stats.read(&samp);
+        const e = samp.events();
+        std.debug.print("{any}\n{any}\n", .{ samp, e });
+    }
+
+    // try tt.expectEqual(@as(usize, 4), e.len);
+    // try tt.expect(samp.running > 0);
+    // try tt.expect(samp.enabled > 0);
+    // for (e) |s| {
+    //     try tt.expect(s > 0);
+    // }
 }

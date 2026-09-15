@@ -1,7 +1,8 @@
 const std = @import("std");
+const tt = std.testing;
+
 const root = @import("root.zig");
 pub const Env = root.Env;
-pub const dno = std.mem.doNotOptimizeAway;
 
 pub inline fn is_tuple(T: type) bool {
     return switch (@typeInfo(T)) {
@@ -69,8 +70,6 @@ pub fn get_file(env: Env, fname: ?[]const u8, suffix: []const u8) !std.Io.File {
     std.mem.copyForwards(u8, name[fname.?.len..], suffix);
     return std.Io.Dir.cwd().createFile(env.io, name[0..len], .{});
 }
-
-const tt = std.testing;
 
 test "alrefs" {
     _ = std.testing.refAllDecls(@This());

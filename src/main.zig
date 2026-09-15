@@ -9,7 +9,7 @@ pub fn main(init: std.process.Init) !void {
     for (&xx) |*x| {
         x.* = rand.float(f64) * 20;
     }
-    const funcs = .{ tgamma, tgamma };
+    const funcs = .{ tgamma, lgamma, tgamma, lgamma };
 
     const config = zm.CountConfig{};
     zm.set_global_opts(.{ .verbose = 1, .use_tsc = true, .perf = true });

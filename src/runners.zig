@@ -15,10 +15,11 @@ const Env = root.Env;
 const Sample = root.Sample;
 const Clock = time.Clock;
 const Timer = time.Timer;
+const dno = std.mem.doNotOptimizeAway;
 
 inline fn call(func: anytype, arg: anytype, comptime as_tuple: bool) void {
-    util.dno(arg);
-    util.dno(@call(.auto, func, if (as_tuple) arg.* else .{arg.*}));
+    dno(arg);
+    dno(@call(.auto, func, if (as_tuple) arg.* else .{arg.*}));
 }
 
 fn assign_sample(sample: *Sample, ps: *perf.Sample) void {
@@ -108,9 +109,14 @@ pub fn timed_trial(env: Env, config: TimedConfig, func: anytype, Elem_t: type, a
     trial.sweeps = 0;
     trial.calls = args.len;
 
-    _ = try timed_sample(env, config.warmup_nanos, func, args, as_tuple);
+    // warmup
+    if (env.perf) |e| try e.enable();
     const sample_nanos = try std.math.divCeil(u64, config.trial_nanos, config.trial_samples);
-    root.verbose(1, "  Trial {s} with {d} samples:", .{ trial.name, trial.samples });
+    const sample_millis: f64 = @as(f64, @floatFromInt(sample_nanos)) / 1e6;
+    root.verbose(1, "  Trial {s} with {d} samples @ {d:.3}ms", .{ trial.name, trial.samples, sample_millis });
+    dno(try timed_sample(env, config.warmup_nanos, func, args, as_tuple));
+    // reinstall to clear time counters
+    if (env.perf) |e| try e.reinstall();
     for (0..trial.samples) |i| {
         root.verbose(2, " {d}", i + 1);
         var res = try timed_sample(env, sample_nanos, func, args, as_tuple);
@@ -118,6 +124,15 @@ pub fn timed_trial(env: Env, config: TimedConfig, func: anytype, Elem_t: type, a
         try trial.data.append(res);
     }
     root.verbose(1, "\n", .{});
+
+    if (env.perf) |_| {
+        const tdlen = trial.data.items.len;
+        for (1..tdlen) |i| {
+            trial.data.items[tdlen - i].cpu_perf.time_enabled -= trial.data.items[tdlen - i - 1].cpu_perf.time_enabled;
+            trial.data.items[tdlen - i].cpu_perf.time_running -= trial.data.items[tdlen - i - 1].cpu_perf.time_running;
+        }
+    }
+
     return trial;
 }
 
@@ -128,15 +143,22 @@ pub fn count_trial(env: Env, config: CountConfig, func: anytype, Elem_t: type, a
     try trial.data.ensureTotalCapacity(config.trial_samples);
     trial.sweeps = config.sample_sweeps;
     trial.calls = args.len;
-
-    const warmres = try count_sample(env, config.warmup_sweeps, func, args, as_tuple);
-    util.dno(warmres);
-    try trial.data.append(warmres);
-    trial.data.clearRetainingCapacity();
+    // warmup
+    if (env.perf) |e| try e.enable();
+    dno(try count_sample(env, config.warmup_sweeps, func, args, as_tuple));
+    // reinstall to clear time counters
+    if (env.perf) |e| try e.reinstall();
     for (0..trial.samples) |i| {
         var res = try count_sample(env, trial.sweeps, func, args, as_tuple);
         res.ord = i;
         try trial.data.append(res);
+    }
+    if (env.perf) |_| {
+        const tdlen = trial.data.items.len;
+        for (1..tdlen) |i| {
+            trial.data.items[tdlen - i].cpu_perf.time_enabled -= trial.data.items[tdlen - i - 1].cpu_perf.time_enabled;
+            trial.data.items[tdlen - i].cpu_perf.time_running -= trial.data.items[tdlen - i - 1].cpu_perf.time_running;
+        }
     }
     return trial;
 }

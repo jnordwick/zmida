@@ -6,6 +6,7 @@ This is for benchmarking high performance, cpu bound code.
 - by count or by time trials
 - same inputs to multiple functions
 - TSC based timing if available
+- perf_event counts (instr, cycles, branches)
 - multiple output formats: text, csv, gnuplot
 
 You supply a list of functions, a configuration, and
@@ -45,12 +46,12 @@ This are the next few thigs I want to work on:
 
 - make some simple functions for most basic "bench this"
 - add adaptive mode that run by count trials by estimating workload
-- performance counters (instr count, cache, etc)
 - better documentation
 - single argument input (no slice, just a single tuple)
 - generator argument input (eg, 1 to 100 by 0.1)
 - less ugly gnuplot output
 - warning if detects debug mode
+- perf counters for cache
 
 * Example
 
