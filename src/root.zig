@@ -5,6 +5,7 @@ pub const out = @import("out.zig");
 const util = @import("util.zig");
 const runners = @import("runners.zig");
 const time = @import("time.zig");
+const perf = @import("perf.zig");
 const ArrayList = std.array_list.Managed;
 const ArgsTuple = std.meta.ArgsTuple;
 const Allocator = std.mem.Allocator;
@@ -13,6 +14,7 @@ const Io = std.Io;
 pub const GlobalOpts = struct {
     verbose: u32 = 0,
     use_tsc: bool = false,
+    perf: bool = false,
 };
 
 pub var gopts = GlobalOpts{};
@@ -66,9 +68,10 @@ pub const GnuplotOpts = struct {
 pub const Env = struct {
     alloc: Allocator,
     io: Io,
+    perf: ?*perf.PerfEvent = null,
 };
 
-pub fn setGlobalOpts(opts: GlobalOpts) void {
+pub fn set_global_opts(opts: GlobalOpts) void {
     gopts = opts;
     time.Clock.setup(if (gopts.use_tsc) .tsc else .monotonic);
 }
@@ -86,6 +89,10 @@ pub const Study = struct {
         }
         this.trials.deinit();
         this.stats.deinit();
+        if (this.env.perf) |p| {
+            p.deinit();
+            this.env.alloc.destroy(p);
+        }
     }
 
     pub fn run(alloc: Allocator, io: Io, name: ?[]const u8, config: anytype, funcs: anytype, args: anytype) !Study {
@@ -101,6 +108,15 @@ pub const Study = struct {
             TimedConfig => .{ .timed = config },
             else => @compileError("config unexpected type"),
         };
+        if (gopts.perf) {
+            const events = [_]perf.Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total };
+            verbose(1, "Installing performance counters", .{});
+            const p = try this.env.alloc.create(perf.PerfEvent);
+            p.* = .{};
+            try p.add_many(&events);
+            try p.install();
+            this.env.perf = p;
+        }
         verbose(1, "Running study {s}\n", this.name);
         verbose(1, "{s}: {any}\n", .{ @typeName(@TypeOf(config)), config });
         inline for (0..funcs.len) |i| {
@@ -116,6 +132,11 @@ pub const Study = struct {
         verbose(1, "Generating stats for study {s}\n", this.name);
         for (this.trials.items) |*t| {
             const st = t.statistics(this.env);
+            std.debug.print("\n", .{});
+            std.debug.print("enabled {} running {}\n", .{ st.perf_time_enabled, st.perf_time_running });
+            std.debug.print("instr {} cycles {}\n", .{ st.perf_cpu_cycles, st.perf_instructions });
+            std.debug.print("branch miss {} total {}\n", .{ st.perf_branch_miss, st.perf_branch_total });
+            std.debug.print("\n", .{});
             try this.stats.append(st);
         }
     }
@@ -195,9 +216,19 @@ pub const Trial = struct {
 /// the results of a single sample.
 /// calls should be a multiple of the number of arguments (sweeps)
 pub const Sample = struct {
-    ord: u64,
-    calls: u64,
-    nanos: f64,
+    ord: u64 = 0,
+    calls: u64 = 0,
+    nanos: f64 = 0,
+    cpu_perf: PerfCounters = .{},
+};
+
+pub const PerfCounters = struct {
+    time_enabled: u64 = 0,
+    time_running: u64 = 0,
+    cpu_cycles: u64 = 0,
+    instructions: u64 = 0,
+    branch_miss: u64 = 0,
+    branch_total: u64 = 0,
 };
 
 test "refalldecls" {

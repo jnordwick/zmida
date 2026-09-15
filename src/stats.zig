@@ -13,6 +13,13 @@ pub const TrialStats = struct {
     call_min_ns: f64 = std.math.inf(f64),
     call_avg_ns: f64 = 0,
 
+    perf_time_enabled: u64 = 0,
+    perf_time_running: u64 = 0,
+    perf_cpu_cycles: u64 = 0,
+    perf_instructions: u64 = 0,
+    perf_branch_miss: u64 = 0,
+    perf_branch_total: u64 = 0,
+
     percentiles: [101]f64 = undefined,
 
     pub fn init(alloc: Allocator, trial: *const zz.Trial) TrialStats {
@@ -21,10 +28,24 @@ pub const TrialStats = struct {
 
         var total_calls: u64 = 0;
         var total_nanos: f64 = 0;
+        var perf_time_enabled: u64 = 0;
+        var perf_time_running: u64 = 0;
+        var perf_cpu_cycles: u64 = 0;
+        var perf_instructions: u64 = 0;
+        var perf_branch_miss: u64 = 0;
+        var perf_branch_total: u64 = 0;
+
         for (runs_slice) |batch| {
             if (batch.calls == 0) @panic("batch had zero calls");
             total_calls += batch.calls;
             total_nanos += batch.nanos;
+
+            perf_time_enabled += batch.cpu_perf.time_enabled;
+            perf_time_running += batch.cpu_perf.time_running;
+            perf_cpu_cycles += batch.cpu_perf.cpu_cycles;
+            perf_instructions += batch.cpu_perf.instructions;
+            perf_branch_miss += batch.cpu_perf.branch_miss;
+            perf_branch_total += batch.cpu_perf.branch_total;
         }
 
         const lat = latencies(alloc, trial.data.items);
@@ -38,6 +59,12 @@ pub const TrialStats = struct {
             .call_max_ns = max_ns,
             .call_min_ns = min_ns,
             .call_avg_ns = total_nanos / @as(f64, @floatFromInt(total_calls)),
+            .perf_time_enabled = perf_time_enabled,
+            .perf_time_running = perf_time_running,
+            .perf_cpu_cycles = perf_cpu_cycles,
+            .perf_instructions = perf_instructions,
+            .perf_branch_miss = perf_branch_miss,
+            .perf_branch_total = perf_branch_total,
             .percentiles = percentiles(lat),
         };
     }

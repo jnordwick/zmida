@@ -6,23 +6,23 @@ const system = std.posix.system;
 const perf_event_attr = system.perf_event_attr;
 const dno = std.mem.doNotOptimizeAway;
 
-pub const max_events = 16;
+pub const max_events = 4;
 
-const PerfEvent = struct {
+pub const Event = struct {
     typ: PERF.TYPE,
     config: u64,
 
-    pub fn make(t: PERF.TYPE, s: anytype) PerfEvent {
+    pub fn make(t: PERF.TYPE, s: anytype) Event {
         return .{ .typ = t, .config = @intFromEnum(s) };
     }
 
-    const cpu_cycles = PerfEvent.make(.HARDWARE, PERF.COUNT.HW.CPU_CYCLES);
-    const retired_instr = PerfEvent.make(.HARDWARE, PERF.COUNT.HW.INSTRUCTIONS);
-    const branch_total = PerfEvent.make(.HARDWARE, PERF.COUNT.HW.BRANCH_INSTRUCTIONS);
-    const branch_miss = PerfEvent.make(.HARDWARE, PERF.COUNT.HW.BRANCH_MISSES);
+    pub const cpu_cycles = Event.make(.HARDWARE, PERF.COUNT.HW.CPU_CYCLES);
+    pub const retired_instr = Event.make(.HARDWARE, PERF.COUNT.HW.INSTRUCTIONS);
+    pub const branch_total = Event.make(.HARDWARE, PERF.COUNT.HW.BRANCH_INSTRUCTIONS);
+    pub const branch_miss = Event.make(.HARDWARE, PERF.COUNT.HW.BRANCH_MISSES);
 };
 
-const PerfSample = extern struct {
+pub const Sample = extern struct {
     nr: u64 = 0,
     enabled: u64 = 0,
     running: u64 = 0,
@@ -42,21 +42,18 @@ const PerfSample = extern struct {
     }
 };
 
-const PerfStats = struct {
+pub const PerfEvent = struct {
     nevents: u64 = 0,
     fds: [max_events]system.fd_t = @splat(0),
-    events: [max_events]PerfEvent = undefined,
+    events: [max_events]Event = undefined,
 
-    pub fn default() PerfStats {
-        var this: PerfStats = .{};
-        this.add(.retired_instr) catch {};
-        this.add(.cpu_cycles) catch {};
-        this.add(.branch_miss) catch {};
-        this.add(.branch_total) catch {};
-        return this;
+    pub fn add_many(this: *@This(), events: []const Event) !void {
+        for (events) |e| {
+            try this.add(e);
+        }
     }
 
-    pub fn add(this: *@This(), evt: PerfEvent) !void {
+    pub fn add(this: *@This(), evt: Event) !void {
         if (this.nevents == max_events) return error.TooManyEvents;
         this.events[this.nevents] = evt;
         this.nevents += 1;
@@ -131,7 +128,7 @@ const PerfStats = struct {
         _ = try ioctl(this.fds[0], PERF.EVENT_IOC.RESET, 0);
     }
 
-    pub fn read(this: *const @This(), sample: *PerfSample) !void {
+    pub fn read(this: *const @This(), sample: *Sample) !void {
         const buf = sample.buffer(this.nevents);
         const r = try std.posix.read(this.fds[0], buf);
         std.debug.assert(r == buf.len);
@@ -170,18 +167,25 @@ fn workload(reps: u64) void {
     }
 }
 
+const tt = std.testing;
+const now = @import("time.zig").now;
+
 test {
-    const names = [_][]const u8{ "retired", "cycles", "branch miss", "branch total" };
-    var stats: PerfStats = .default();
+    const events = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total };
+    //const names = [_][]const u8{ "retired", "cycles", "branch miss", "branch total" };
+    var stats: PerfEvent = .{};
+    try stats.add_many(&events);
     try stats.install();
     try stats.enable();
-    workload(100_000_000);
+    workload(1_000_000);
     try stats.disable();
-    var samp: PerfSample = .{};
+    var samp: Sample = .{};
     try stats.read(&samp);
     const e = samp.events();
-    std.debug.print("nr {}\ntime {} / {}\n", .{ e.len, samp.running, samp.enabled });
-    for (e, 0..) |s, i| {
-        std.debug.print("{s} {}\n", .{ names[i], s });
+    try tt.expectEqual(@as(usize, 4), e.len);
+    try tt.expect(samp.running > 0);
+    try tt.expect(samp.enabled > 0);
+    for (e) |s| {
+        try tt.expect(s > 0);
     }
 }

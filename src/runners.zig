@@ -4,6 +4,7 @@ pub const util = @import("util.zig");
 pub const time = @import("time.zig");
 pub const stats = @import("stats.zig");
 pub const out = @import("out.zig");
+const perf = @import("perf.zig");
 const ArrayList = std.array_list.Managed;
 const ArgsTuple = std.meta.ArgsTuple;
 const Allocator = std.mem.Allocator;
@@ -20,8 +21,22 @@ inline fn call(func: anytype, arg: anytype, comptime as_tuple: bool) void {
     util.dno(@call(.auto, func, if (as_tuple) arg.* else .{arg.*}));
 }
 
-pub fn count_sample(sweeps: u64, func: anytype, args: anytype, comptime as_tuple: bool) Sample {
+fn assign_sample(sample: *Sample, ps: *perf.Sample) void {
+    sample.cpu_perf.time_enabled = ps.enabled;
+    sample.cpu_perf.time_running = ps.running;
+    sample.cpu_perf.instructions = ps.records[0];
+    sample.cpu_perf.cpu_cycles = ps.records[1];
+    sample.cpu_perf.branch_miss = ps.records[2];
+    sample.cpu_perf.branch_total = ps.records[3];
+}
+
+pub fn count_sample(env: Env, sweeps: u64, func: anytype, args: anytype, comptime as_tuple: bool) !Sample {
+    var sample: Sample = .{};
     var timer: Timer = undefined;
+    if (env.perf) |e| {
+        try e.reset();
+        try e.enable();
+    }
     timer.start();
     for (0..sweeps) |_| {
         for (args) |*a| {
@@ -29,7 +44,15 @@ pub fn count_sample(sweeps: u64, func: anytype, args: anytype, comptime as_tuple
         }
     }
     timer.stop();
-    return .{ .ord = 0, .calls = sweeps * args.len, .nanos = timer.nanos() };
+    if (env.perf) |p| {
+        try p.disable();
+        var ps: perf.Sample = .{};
+        try p.read(&ps);
+        assign_sample(&sample, &ps);
+    }
+    sample.calls = sweeps * args.len;
+    sample.nanos = timer.nanos();
+    return sample;
 }
 
 pub fn set_bool(start: *std.atomic.Value(bool), stop: *std.atomic.Value(bool), nanos: u64) void {
@@ -40,7 +63,8 @@ pub fn set_bool(start: *std.atomic.Value(bool), stop: *std.atomic.Value(bool), n
     stop.store(true, .release);
 }
 
-pub fn timed_sample(nanos: u64, func: anytype, args: anytype, comptime as_tuple: bool) Sample {
+pub fn timed_sample(env: Env, nanos: u64, func: anytype, args: anytype, comptime as_tuple: bool) !Sample {
+    var sample: Sample = .{};
     var start: std.atomic.Value(bool) = .init(false);
     var done: std.atomic.Value(bool) = .init(false);
     var timer_thread = std.Thread.spawn(
@@ -49,9 +73,12 @@ pub fn timed_sample(nanos: u64, func: anytype, args: anytype, comptime as_tuple:
         .{ &start, &done, nanos },
     ) catch @panic("could not spawn");
     var timer: Timer = undefined;
-
     var sweeps: u64 = 0;
     start.store(true, .release);
+    if (env.perf) |e| {
+        try e.reset();
+        try e.enable();
+    }
     timer.start();
     while (!done.load(.acquire)) {
         for (args) |*a| {
@@ -60,12 +87,20 @@ pub fn timed_sample(nanos: u64, func: anytype, args: anytype, comptime as_tuple:
         sweeps += 1;
     }
     timer.stop();
+    if (env.perf) |p| {
+        try p.disable();
+        var ps: perf.Sample = .{};
+        try p.read(&ps);
+        assign_sample(&sample, &ps);
+    }
+    sample.calls = sweeps * args.len;
+    sample.nanos = timer.nanos();
     timer_thread.join();
 
-    return .{ .ord = 0, .calls = sweeps * args.len, .nanos = timer.nanos() };
+    return sample;
 }
 
-pub fn timed_trial(env: root.Env, config: TimedConfig, func: anytype, Elem_t: type, args: []const Elem_t) !Trial {
+pub fn timed_trial(env: Env, config: TimedConfig, func: anytype, Elem_t: type, args: []const Elem_t) !Trial {
     const as_tuple = util.is_tuple(Elem_t);
     var trial: Trial = .init(env, util.get_fname(func));
     trial.samples = config.trial_samples;
@@ -73,12 +108,12 @@ pub fn timed_trial(env: root.Env, config: TimedConfig, func: anytype, Elem_t: ty
     trial.sweeps = 0;
     trial.calls = args.len;
 
-    _ = timed_sample(config.warmup_nanos, func, args, as_tuple);
+    _ = try timed_sample(env, config.warmup_nanos, func, args, as_tuple);
     const sample_nanos = try std.math.divCeil(u64, config.trial_nanos, config.trial_samples);
     root.verbose(1, "  Trial {s} with {d} samples:", .{ trial.name, trial.samples });
     for (0..trial.samples) |i| {
         root.verbose(2, " {d}", i + 1);
-        var res = timed_sample(sample_nanos, func, args, as_tuple);
+        var res = try timed_sample(env, sample_nanos, func, args, as_tuple);
         res.ord = i;
         try trial.data.append(res);
     }
@@ -94,12 +129,12 @@ pub fn count_trial(env: Env, config: CountConfig, func: anytype, Elem_t: type, a
     trial.sweeps = config.sample_sweeps;
     trial.calls = args.len;
 
-    const warmres = count_sample(config.warmup_sweeps, func, args, as_tuple);
+    const warmres = try count_sample(env, config.warmup_sweeps, func, args, as_tuple);
     util.dno(warmres);
     try trial.data.append(warmres);
     trial.data.clearRetainingCapacity();
     for (0..trial.samples) |i| {
-        var res = count_sample(trial.sweeps, func, args, as_tuple);
+        var res = try count_sample(env, trial.sweeps, func, args, as_tuple);
         res.ord = i;
         try trial.data.append(res);
     }
@@ -113,6 +148,7 @@ test "refalldecls" {
 }
 
 test "count_samples single" {
+    const env = Env{ .alloc = tt.allocator, .io = tt.io };
     var rand: std.Random.Xoshiro256 = .init(0);
     var rr = rand.random();
     var args: [1000]f64 = undefined;
@@ -121,11 +157,12 @@ test "count_samples single" {
     }
     const args_slice: []f64 = &args;
 
-    const t = count_sample(10, std.math.sin, args_slice, false);
+    const t = try count_sample(env, 10, std.math.sin, args_slice, false);
     try tt.expect(t.calls == 10000);
 }
 
 test "count_samples multiple" {
+    const env = Env{ .alloc = tt.allocator, .io = tt.io };
     const arg_t = struct { comptime type = f64, f64, f64 };
 
     var rand: std.Random.Xoshiro256 = .init(0);
@@ -136,7 +173,7 @@ test "count_samples multiple" {
     }
     const args_slice: []arg_t = &args;
 
-    const t = count_sample(10, std.math.log, args_slice, true);
+    const t = try count_sample(env, 10, std.math.log, args_slice, true);
     try tt.expect(t.calls == 10000);
 }
 
@@ -177,6 +214,7 @@ test "count_trial multiple" {
 }
 
 test "timed_samples single" {
+    const env = Env{ .alloc = tt.allocator, .io = tt.io };
     var rand: std.Random.Xoshiro256 = .init(0);
     var rr = rand.random();
     var args: [1000]f64 = undefined;
@@ -185,14 +223,14 @@ test "timed_samples single" {
     }
     const args_slice: []f64 = &args;
 
-    const t = timed_sample(50 * 1000 * 1000, std.math.sin, args_slice, false);
+    const t = try timed_sample(env, 50 * 1000 * 1000, std.math.sin, args_slice, false);
     try tt.expect(t.calls % 1000 == 0);
-    std.debug.print("--- {} {} \n", .{ t.calls, t.nanos });
     try tt.expect(t.nanos > 50 * 1000 * 1000);
     try tt.expect(t.nanos < 51 * 1000 * 1000);
 }
 
 test "timed_samples multiple" {
+    const env = Env{ .alloc = tt.allocator, .io = tt.io };
     const arg_t = struct { comptime type = f64, f64, f64 };
 
     var rand: std.Random.Xoshiro256 = .init(0);
@@ -203,7 +241,7 @@ test "timed_samples multiple" {
     }
     const args_slice: []arg_t = &args;
 
-    const t = timed_sample(50 * 1000 * 1000, std.math.log, args_slice, true);
+    const t = try timed_sample(env, 50 * 1000 * 1000, std.math.log, args_slice, true);
     try tt.expect(t.calls % 1000 == 0);
     try tt.expect(t.nanos > 50 * 1000 * 1000);
     try tt.expect(t.nanos < 51 * 1000 * 1000);

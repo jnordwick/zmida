@@ -9,14 +9,14 @@ pub fn main(init: std.process.Init) !void {
     for (&xx) |*x| {
         x.* = rand.float(f64) * 20;
     }
-    const funcs = .{ lgamma, tgamma };
+    const funcs = .{ tgamma, tgamma };
 
-    const config = zm.TimedConfig{};
-    zm.setGlobalOpts(.{ .verbose = 1, .use_tsc = true });
+    const config = zm.CountConfig{};
+    zm.set_global_opts(.{ .verbose = 1, .use_tsc = true, .perf = true });
     var study = try zm.Study.run(init.gpa, init.io, null, config, funcs, xx);
     try study.write_text(null, .{ .mode = .lat });
-    try study.write_summary(null, .{ .separator = '\t' });
-    //    try study.write_gnuplot("example", .{});
+    // try study.write_summary(null, .{ .separator = '\t' });
+    // try study.write_gnuplot("example", .{});
     defer study.deinit();
 }
 
