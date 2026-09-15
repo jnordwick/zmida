@@ -45,12 +45,12 @@ A lot of the top level functions have some comptime
 This are the next few thigs I want to work on:
 
 - make some simple functions for most basic "bench this"
-- add adaptive mode that run by count trials by estimating workload
+- add adaptive mode that run by-count trials by estimating workload
 - better documentation
-- single argument input (no slice, just a single tuple)
+- single argument input (no slice, single tuple, niladic)
 - generator argument input (eg, 1 to 100 by 0.1)
-- less ugly gnuplot output
-- warning if detects debug mode
+- gnuplot: less ugly output and chart options
+- gnuplot: add basic bar (relative mode, perf events)
 - perf counters for cache
 
 * Example

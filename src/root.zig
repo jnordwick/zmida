@@ -12,6 +12,7 @@ const Allocator = std.mem.Allocator;
 const Io = std.Io;
 
 pub const GlobalOpts = struct {
+    debug_warn: bool = true,
     verbose: u32 = 0,
     use_tsc: bool = false,
     perf: bool = false,
@@ -22,6 +23,13 @@ pub var gopts = GlobalOpts{};
 pub fn verbose(comptime lev: u32, comptime fmt: []const u8, p: anytype) void {
     if (lev <= gopts.verbose) {
         std.debug.print(fmt, if (util.is_tuple(@TypeOf(p))) p else .{p});
+    }
+}
+
+pub inline fn debug_warn() void {
+    if (@import("builtin").mode == .Debug and gopts.debug_warn) {
+        std.debug.print("!!! WARNING !!! Compiled in debug mode.\n", .{});
+        gopts.debug_warn = false;
     }
 }
 
@@ -74,6 +82,7 @@ pub const Env = struct {
 pub fn set_global_opts(opts: GlobalOpts) void {
     gopts = opts;
     time.Clock.setup(if (gopts.use_tsc) .tsc else .monotonic);
+    debug_warn();
 }
 
 pub const Study = struct {
@@ -96,6 +105,7 @@ pub const Study = struct {
     }
 
     pub fn run(alloc: Allocator, io: Io, name: ?[]const u8, config: anytype, funcs: anytype, args: anytype) !Study {
+        debug_warn();
         var this = Study{
             .env = .{ .alloc = alloc, .io = io },
             .name = name orelse "zmida",
