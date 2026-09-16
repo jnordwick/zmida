@@ -12,6 +12,10 @@ pub const TrialStats = stats.TrialStats;
 const time = @import("time.zig");
 const util = @import("util.zig");
 
+const trial = @import("trial.zig");
+pub const Trial = trial.Trial;
+pub const TrialDef = trial.TrialDef;
+
 pub const GlobalOpts = struct {
     debug_warn: bool = true,
     verbose: u32 = 0,
@@ -33,29 +37,6 @@ pub inline fn debug_warn() void {
         gopts.debug_warn = false;
     }
 }
-
-// Definitions are the actual parameters for a trial.
-// these are concrete and what are the repeatable pieces.
-// I plan to move some other pieces into these such as
-// perf and timing options so trials can be indepedant
-// of the studies. this should clean up the interace
-// a little.
-pub const CountDefn = struct {
-    warmup_sweeps: u64,
-    trial_samples: u64,
-    sample_sweeps: u64,
-};
-
-pub const TimedDefn = struct {
-    warmup_nanos: u64,
-    trial_samples: u64,
-    sample_nanos: u64,
-};
-
-pub const TrialDefn = union(enum) {
-    timed: TimedDefn,
-    count: CountDefn,
-};
 
 // These are requested parameters exposed through the
 // study types. they are easier user facing. from these,
@@ -122,7 +103,7 @@ pub fn set_global_opts(opts: GlobalOpts) void {
 pub const Study = struct {
     env: Env,
     name: []const u8,
-    defn: TrialDefn,
+    def: TrialDef,
     trials: ArrayList(Trial),
     stats: ArrayList(TrialStats),
 
@@ -143,11 +124,11 @@ pub const Study = struct {
         var this = Study{
             .env = .{ .alloc = alloc, .io = io },
             .name = name orelse "zmida",
-            .defn = undefined,
+            .def = undefined,
             .trials = .init(alloc),
             .stats = .init(alloc),
         };
-        this.defn = this.build_defn(config, args.len);
+        this.def = this.build_def(config, args.len);
         if (gopts.perf) {
             const events = [_]perf.Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total };
             verbose(1, "Installing performance counters\n", .{});
@@ -161,13 +142,14 @@ pub const Study = struct {
         verbose(1, "{s}: {any}\n", .{ @typeName(@TypeOf(config)), config });
         inline for (0..funcs.len) |i| {
             verbose(1, "  Running trial {d}/{d}\n", .{ i + 1, funcs.len });
-            const t = try Trial.run(this.env, this.defn, funcs[i], args);
+            var t = Trial.init(this.env, this.def, util.get_fname(funcs[i]));
+            try t.run(funcs[i], args);
             try this.trials.append(t);
         }
         return this;
     }
 
-    fn build_defn(_: *@This(), config: Config, nargs: usize) TrialDefn {
+    fn build_def(_: *@This(), config: Config, nargs: usize) TrialDef {
         switch (config) {
             .count => |c| {
                 return .{ .count = .{
@@ -237,58 +219,35 @@ pub const Study = struct {
     }
 };
 
-/// A trial is the result of a series of samples. A sample is
-/// a number of sweeps over the args slice given
-pub const Trial = struct {
-    name: []const u8,
-    samples: u64 = 0, // samples per trial, data.len
-    sweeps: u64 = 0, // sweeps per sample, 0 = dynamic
-    calls: u64 = 0, // calls per sweep, args.len
-    data: ArrayList(Sample),
-
-    pub fn init(env: Env, name: []const u8) Trial {
-        return .{
-            .name = name,
-            .data = .init(env.alloc),
-        };
-    }
-
-    pub fn deinit(this: @This()) void {
-        this.data.deinit();
-    }
-
-    pub fn run(env: Env, defn: TrialDefn, func: anytype, args: anytype) !Trial {
-        const Elem_t = std.meta.Elem(@TypeOf(args));
-        const args_slice: []const Elem_t = util.from_slice_like(Elem_t, args);
-        return switch (defn) {
-            .count => runners.count_trial(env, defn.count, func, Elem_t, args_slice),
-            .timed => runners.timed_trial(env, defn.timed, func, Elem_t, args_slice),
-        };
-    }
-
-    pub fn statistics(this: *@This(), env: Env) TrialStats {
-        return .init(env.alloc, this);
-    }
-};
-
 /// the results of a single sample.
 /// calls should be a multiple of the number of arguments (sweeps)
 pub const Sample = struct {
     ord: u64 = 0,
     calls: u64 = 0,
     nanos: f64 = 0,
-    cpu_perf: PerfCounters = .{},
+    cpu_perf: CpuCounters = .{},
 };
 
-pub const PerfCounters = struct {
+pub const CpuCounters = struct {
     time_enabled: u64 = 0,
     time_running: u64 = 0,
     cpu_cycles: u64 = 0,
     instructions: u64 = 0,
     branch_miss: u64 = 0,
     branch_total: u64 = 0,
+
+    pub fn init(ps: *const perf.Sample) CpuCounters {
+        return .{
+            .time_enabled = ps.enabled,
+            .time_running = ps.running,
+            .instructions = ps.records[0],
+            .cpu_cycles = ps.records[1],
+            .branch_miss = ps.records[2],
+            .branch_total = ps.records[3],
+        };
+    }
 };
 
-test "refalldecls" {
+test {
     std.testing.refAllDecls(@This());
 }

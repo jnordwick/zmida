@@ -2,6 +2,7 @@ const std = @import("std");
 const tt = std.testing;
 
 const root = @import("root.zig");
+const ArgsType = @import("trial.zig").ArgsType;
 pub const Env = root.Env;
 
 pub inline fn is_tuple(T: type) bool {
@@ -26,6 +27,22 @@ pub fn float_div(T: type, num: anytype, denom: anytype) T {
 
 pub fn idiv_up(T: type, n: anytype, d: anytype) T {
     return (@as(T, @intCast(d)) - 1 + @as(T, @intCast(n))) / @as(T, @intCast(d));
+}
+
+pub inline fn argstype_of(x: type) ArgsType {
+    switch (@typeInfo(x)) {
+        .void => @compileError("nyi niladic argstype"),
+        .array => @compileError("nyi array argstype"),
+        .pointer => |p| {
+            switch (p.size) {
+                .slice => return if (is_tuple(p.child)) .slice_tuple else .slice_naked,
+                .one => @compileError("nyi array argstype"),
+                else => @compileError("multi element and c pointers cannot be argstype"),
+            }
+        },
+        .@"struct" => @compileLog("nyi tuple/generator argstype"),
+        else => @compileLog("nyi single argstype"),
+    }
 }
 
 pub inline fn from_slice_like(Elem: type, x: anytype) []const Elem {

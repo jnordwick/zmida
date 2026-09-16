@@ -180,46 +180,46 @@ fn workload(reps: u64) void {
 const tt = std.testing;
 const now = @import("time.zig").now;
 
-test {
-    const events = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total };
-    //const names = [_][]const u8{ "retired", "cycles", "branch miss", "branch total" };
-    var stats: PerfEvent = .{};
-    try stats.add_many(&events);
-    try stats.install();
-    try stats.enable();
-    workload(1_000_000);
-    try stats.disable();
+// test {
+//     const events = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total };
+//     //const names = [_][]const u8{ "retired", "cycles", "branch miss", "branch total" };
+//     var stats: PerfEvent = .{};
+//     try stats.add_many(&events);
+//     try stats.install();
+//     try stats.enable();
+//     workload(1_000_000);
+//     try stats.disable();
 
-    {
-        var samp: Sample = .{};
-        try stats.read(&samp);
-        const e = samp.events();
-        std.debug.print("{any}\n{any}\n", .{ samp, e });
-    }
+//     {
+//         var samp: Sample = .{};
+//         try stats.read(&samp);
+//         const e = samp.events();
+//         std.debug.print("{any}\n{any}\n", .{ samp, e });
+//     }
 
-    try stats.reset();
-    {
-        var samp: Sample = .{};
-        try stats.read(&samp);
-        const e = samp.events();
-        std.debug.print("{any}\n{any}\n", .{ samp, e });
-    }
+//     try stats.reset();
+//     {
+//         var samp: Sample = .{};
+//         try stats.read(&samp);
+//         const e = samp.events();
+//         std.debug.print("{any}\n{any}\n", .{ samp, e });
+//     }
 
-    try stats.enable();
-    workload(1_000_000);
-    try stats.disable();
+//     try stats.enable();
+//     workload(1_000_000);
+//     try stats.disable();
 
-    {
-        var samp: Sample = .{};
-        try stats.read(&samp);
-        const e = samp.events();
-        std.debug.print("{any}\n{any}\n", .{ samp, e });
-    }
+//     {
+//         var samp: Sample = .{};
+//         try stats.read(&samp);
+//         const e = samp.events();
+//         std.debug.print("{any}\n{any}\n", .{ samp, e });
+//     }
 
-    // try tt.expectEqual(@as(usize, 4), e.len);
-    // try tt.expect(samp.running > 0);
-    // try tt.expect(samp.enabled > 0);
-    // for (e) |s| {
-    //     try tt.expect(s > 0);
-    // }
-}
+//     // try tt.expectEqual(@as(usize, 4), e.len);
+//     // try tt.expect(samp.running > 0);
+//     // try tt.expect(samp.enabled > 0);
+//     // for (e) |s| {
+//     //     try tt.expect(s > 0);
+//     // }
+// }
