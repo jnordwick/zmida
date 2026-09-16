@@ -154,7 +154,7 @@ pub fn text_perf(
     var separator_len = max_name_len + 2;
     try write_n(writer, hbar, separator_len);
     try write_n(writer, plus, 1);
-    separator_len = 8 + 2 * 11;
+    separator_len = 1 + 8 + 2 * 11;
     try write_n(writer, hbar, separator_len);
     try write_n(writer, plus, 1);
     separator_len = 8 + 2 * 11;

@@ -8,8 +8,8 @@ const perf = @import("perf.zig");
 const ArrayList = std.array_list.Managed;
 const ArgsTuple = std.meta.ArgsTuple;
 const Allocator = std.mem.Allocator;
-const TimedConfig = root.TimedConfig;
-const CountConfig = root.CountConfig;
+const TimedDefn = root.TimedDefn;
+const CountDefn = root.CountDefn;
 const Trial = root.Trial;
 const Env = root.Env;
 const Sample = root.Sample;
@@ -101,25 +101,24 @@ pub fn timed_sample(env: Env, nanos: u64, func: anytype, args: anytype, comptime
     return sample;
 }
 
-pub fn timed_trial(env: Env, config: TimedConfig, func: anytype, Elem_t: type, args: []const Elem_t) !Trial {
+pub fn timed_trial(env: Env, defn: TimedDefn, func: anytype, Elem_t: type, args: []const Elem_t) !Trial {
     const as_tuple = util.is_tuple(Elem_t);
     var trial: Trial = .init(env, util.get_fname(func));
-    trial.samples = config.trial_samples;
-    try trial.data.ensureTotalCapacity(config.trial_samples);
+    trial.samples = defn.trial_samples;
+    try trial.data.ensureTotalCapacity(defn.trial_samples);
     trial.sweeps = 0;
     trial.calls = args.len;
 
     // warmup
     if (env.perf) |e| try e.enable();
-    const sample_nanos = try std.math.divCeil(u64, config.trial_nanos, config.trial_samples);
-    const sample_millis: f64 = @as(f64, @floatFromInt(sample_nanos)) / 1e6;
+    const sample_millis: f64 = @as(f64, @floatFromInt(defn.sample_nanos)) / 1e6;
     root.verbose(1, "  Trial {s} with {d} samples @ {d:.3}ms", .{ trial.name, trial.samples, sample_millis });
-    dno(try timed_sample(env, config.warmup_nanos, func, args, as_tuple));
+    dno(try timed_sample(env, defn.warmup_nanos, func, args, as_tuple));
     // reinstall to clear time counters
     if (env.perf) |e| try e.reinstall();
     for (0..trial.samples) |i| {
         root.verbose(2, " {d}", i + 1);
-        var res = try timed_sample(env, sample_nanos, func, args, as_tuple);
+        var res = try timed_sample(env, defn.sample_nanos, func, args, as_tuple);
         res.ord = i;
         try trial.data.append(res);
     }
@@ -136,16 +135,16 @@ pub fn timed_trial(env: Env, config: TimedConfig, func: anytype, Elem_t: type, a
     return trial;
 }
 
-pub fn count_trial(env: Env, config: CountConfig, func: anytype, Elem_t: type, args: []const Elem_t) !Trial {
+pub fn count_trial(env: Env, defn: CountDefn, func: anytype, Elem_t: type, args: []const Elem_t) !Trial {
     const as_tuple = util.is_tuple(Elem_t);
     var trial: Trial = .init(env, util.get_fname(func));
-    trial.samples = config.trial_samples;
-    try trial.data.ensureTotalCapacity(config.trial_samples);
-    trial.sweeps = config.sample_sweeps;
+    trial.samples = defn.trial_samples;
+    try trial.data.ensureTotalCapacity(defn.trial_samples);
+    trial.sweeps = defn.sample_sweeps;
     trial.calls = args.len;
     // warmup
     if (env.perf) |e| try e.enable();
-    dno(try count_sample(env, config.warmup_sweeps, func, args, as_tuple));
+    dno(try count_sample(env, defn.warmup_sweeps, func, args, as_tuple));
     // reinstall to clear time counters
     if (env.perf) |e| try e.reinstall();
     for (0..trial.samples) |i| {
@@ -208,7 +207,7 @@ test "count_trial single" {
         a.* = rr.float(f64) * 1000;
     }
 
-    var t = try Trial.run(env, CountConfig{
+    var t = try Trial.run(env, CountDefn{
         .warmup_sweeps = 3,
         .trial_samples = 10,
         .sample_sweeps = 5,
@@ -226,7 +225,7 @@ test "count_trial multiple" {
         a.* = .{ f64, 2 + rr.float(f64) * 100, 2 + rr.float(f64) * 1000 };
     }
 
-    var t = try Trial.run(env, CountConfig{
+    var t = try Trial.run(env, CountDefn{
         .warmup_sweeps = 3,
         .trial_samples = 10,
         .sample_sweeps = 5,
@@ -278,7 +277,7 @@ test "timed_trial single" {
         a.* = rr.float(f64) * 1000;
     }
 
-    var t = try Trial.run(env, TimedConfig{
+    var t = try Trial.run(env, TimedDefn{
         .warmup_nanos = 50 * 1e6,
         .trial_nanos = 100 * 1e6,
         .trial_samples = 10,
@@ -295,7 +294,7 @@ test "timed_trial multiple" {
         a.* = .{ f64, 2 + rr.float(f64) * 100, 2 + rr.float(f64) * 1000 };
     }
 
-    var t = try Trial.run(env, TimedConfig{
+    var t = try Trial.run(env, TimedDefn{
         .warmup_nanos = 50 * 1e6,
         .trial_nanos = 100 * 1e6,
         .trial_samples = 10,

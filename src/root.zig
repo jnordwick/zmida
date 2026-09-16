@@ -1,15 +1,16 @@
 const std = @import("std");
-pub const stats = @import("stats.zig");
-pub const TrialStats = stats.TrialStats;
-pub const out = @import("out.zig");
-const util = @import("util.zig");
-const runners = @import("runners.zig");
-const time = @import("time.zig");
-const perf = @import("perf.zig");
 const ArrayList = std.array_list.Managed;
 const ArgsTuple = std.meta.ArgsTuple;
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
+
+pub const out = @import("out.zig");
+const perf = @import("perf.zig");
+const runners = @import("runners.zig");
+pub const stats = @import("stats.zig");
+pub const TrialStats = stats.TrialStats;
+const time = @import("time.zig");
+const util = @import("util.zig");
 
 pub const GlobalOpts = struct {
     debug_warn: bool = true,
@@ -33,23 +34,56 @@ pub inline fn debug_warn() void {
     }
 }
 
-/// trial with set number of samples and set number of sweeps per sample
+// Definitions are the actual parameters for a trial.
+// these are concrete and what are the repeatable pieces.
+// I plan to move some other pieces into these such as
+// perf and timing options so trials can be indepedant
+// of the studies. this should clean up the interace
+// a little.
+pub const CountDefn = struct {
+    warmup_sweeps: u64,
+    trial_samples: u64,
+    sample_sweeps: u64,
+};
+
+pub const TimedDefn = struct {
+    warmup_nanos: u64,
+    trial_samples: u64,
+    sample_nanos: u64,
+};
+
+pub const TrialDefn = union(enum) {
+    timed: TimedDefn,
+    count: CountDefn,
+};
+
+// These are requested parameters exposed through the
+// study types. they are easier user facing. from these,
+// the argument list, and the environment, a definition
+// is made and passed to the trials.
 pub const CountConfig = struct {
-    warmup_sweeps: u32 = 5000,
-    trial_samples: u32 = 250,
-    sample_sweeps: u32 = 1000,
+    warmup_calls: u32 = 5_000,
+    trial_samples: u32 = 10_000,
+    sample_calls: u32 = 1_000,
 };
 
 pub const TimedConfig = struct {
-    warmup_nanos: u32 = 100 * 1e6, // 100 milliseconds
-    trial_nanos: u64 = 1 * 1e9, // 1 second
+    warmup_millis: u32 = 100,
     trial_samples: u32 = 250,
+    trial_millis: u32 = 2_500,
 };
 
-const Config = union(enum) {
-    count: CountConfig,
+pub const Config = union(enum) {
     timed: TimedConfig,
-    none: void,
+    count: CountConfig,
+
+    pub fn bycount(config: CountConfig) Config {
+        return .{ .count = config };
+    }
+
+    pub fn bytime(config: TimedConfig) Config {
+        return .{ .timed = config };
+    }
 };
 
 pub const TextOpts = struct {
@@ -88,7 +122,7 @@ pub fn set_global_opts(opts: GlobalOpts) void {
 pub const Study = struct {
     env: Env,
     name: []const u8,
-    config: Config,
+    defn: TrialDefn,
     trials: ArrayList(Trial),
     stats: ArrayList(TrialStats),
 
@@ -104,20 +138,16 @@ pub const Study = struct {
         }
     }
 
-    pub fn run(alloc: Allocator, io: Io, name: ?[]const u8, config: anytype, funcs: anytype, args: anytype) !Study {
+    pub fn run(alloc: Allocator, io: Io, name: ?[]const u8, config: Config, funcs: anytype, args: anytype) !Study {
         debug_warn();
         var this = Study{
             .env = .{ .alloc = alloc, .io = io },
             .name = name orelse "zmida",
-            .config = .{ .none = {} },
+            .defn = undefined,
             .trials = .init(alloc),
             .stats = .init(alloc),
         };
-        this.config = switch (@TypeOf(config)) {
-            CountConfig => .{ .count = config },
-            TimedConfig => .{ .timed = config },
-            else => @compileError("config unexpected type"),
-        };
+        this.defn = this.build_defn(config, args.len);
         if (gopts.perf) {
             const events = [_]perf.Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total };
             verbose(1, "Installing performance counters\n", .{});
@@ -131,10 +161,29 @@ pub const Study = struct {
         verbose(1, "{s}: {any}\n", .{ @typeName(@TypeOf(config)), config });
         inline for (0..funcs.len) |i| {
             verbose(1, "  Running trial {d}/{d}\n", .{ i + 1, funcs.len });
-            const t = try Trial.run(this.env, config, funcs[i], args);
+            const t = try Trial.run(this.env, this.defn, funcs[i], args);
             try this.trials.append(t);
         }
         return this;
+    }
+
+    fn build_defn(_: *@This(), config: Config, nargs: usize) TrialDefn {
+        switch (config) {
+            .count => |c| {
+                return .{ .count = .{
+                    .warmup_sweeps = util.idiv_up(u64, c.warmup_calls, nargs),
+                    .trial_samples = c.trial_samples,
+                    .sample_sweeps = util.idiv_up(u64, c.sample_calls, nargs),
+                } };
+            },
+            .timed => |c| {
+                return .{ .timed = .{
+                    .warmup_nanos = c.warmup_millis * 1000,
+                    .trial_samples = c.trial_samples,
+                    .sample_nanos = util.idiv_up(u64, c.trial_millis * 1000, c.trial_samples),
+                } };
+            },
+        }
     }
 
     pub fn statistics(this: *@This()) !void {
@@ -208,13 +257,12 @@ pub const Trial = struct {
         this.data.deinit();
     }
 
-    pub fn run(env: Env, config: anytype, func: anytype, args: anytype) !Trial {
+    pub fn run(env: Env, defn: TrialDefn, func: anytype, args: anytype) !Trial {
         const Elem_t = std.meta.Elem(@TypeOf(args));
         const args_slice: []const Elem_t = util.from_slice_like(Elem_t, args);
-        return switch (@TypeOf(config)) {
-            CountConfig => runners.count_trial(env, config, func, Elem_t, args_slice),
-            TimedConfig => runners.timed_trial(env, config, func, Elem_t, args_slice),
-            else => @compileError("bench passed unknown config type"),
+        return switch (defn) {
+            .count => runners.count_trial(env, defn.count, func, Elem_t, args_slice),
+            .timed => runners.timed_trial(env, defn.timed, func, Elem_t, args_slice),
         };
     }
 

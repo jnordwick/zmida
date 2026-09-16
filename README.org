@@ -51,39 +51,42 @@ This are the next few thigs I want to work on:
 - generator argument input (eg, 1 to 100 by 0.1)
 - gnuplot: less ugly output and chart options
 - gnuplot: add basic bar (relative mode, perf events)
-- perf counters for cache
+- perf counters for cache (also perf multiplexed adj)
 
 * Example
 
 #+BEGIN_SRC zig
-pub fn main(init: std.process.Init) !void {
+  pub fn main(init: std.process.Init) !void {
 
-    // generate benchmark inputs
-    const N = 100;
-    var xosh: std.Random.Xoshiro256 = .init(0);
-    var rand = xosh.random();
-    var xx: [N]f64 = undefined;
-    for (&xx) |*x| {
-        x.* = rand.float(f64) * 20;
-    }
+      // generate benchmark inputs
+      const N = 100;
+      var xosh: std.Random.Xoshiro256 = .init(0);
+      var rand = xosh.random();
+      var args: [N]f64 = undefined;
+      for (&args) |*x| {
+          x.* = rand.float(f64) * 20;
+      }
 
-    // the functions to benchmark
-    const funcs = .{ lgamma, tgamma };
+      // the functions to benchmark to a tuple
+      const funcs = .{ lgamma, tgamma };
 
-    // create a configuration with defaults
-    const config = zm.TimedConfig{};
-    // output a little exta and use RDTSC for timing
-    zm.setGlobalOpts(.{ .verbose = 1, .use_tsc = true });
+      // create a configuration with defaults
+      const config = zm.TimedConfig{};
+      // output a little exta and use RDTSC for timing
+      zm.setGlobalOpts(.{ .verbose = 2, .use_tsc = true });
 
-    // run the study
-    var study = try zm.Study.run(init.gpa, init.io, null, config, funcs, xx);
-    defer study.deinit(); 
+      // run the study
+      // the allocator and io are used by the benchmark harness. these are no
+      // the ones used by the passed in functions.
+      // 
+      var study = try zm.Study.run(init.gpa, init.io, null, config, funcs, args);
+      defer study.deinit(); 
 
-    // write the output, null mean to stdout
-    try study.write_text(null, .{ .mode = .lat });
-    try study.write_summary("example", .{ .separator = '\t' });
-    try study.write_gnuplot("example", .{});
-}
+      // write the output, null mean to stdout
+      try study.write_text(null, .{ .mode = .lat });
+      try study.write_summary("example", .{ .separator = '\t' });
+      try study.write_gnuplot("example", .{});
+  }
 #+END_SRC
 
 Here is what the run looks like

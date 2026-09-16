@@ -24,6 +24,10 @@ pub fn float_div(T: type, num: anytype, denom: anytype) T {
     return to_float(T, num) / to_float(T, denom);
 }
 
+pub fn idiv_up(T: type, n: anytype, d: anytype) T {
+    return (@as(T, @intCast(d)) - 1 + @as(T, @intCast(n))) / @as(T, @intCast(d));
+}
+
 pub inline fn from_slice_like(Elem: type, x: anytype) []const Elem {
     const ti = @typeInfo(@TypeOf(x));
     switch (ti) {
