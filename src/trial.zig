@@ -36,9 +36,9 @@ pub const ArgsType = enum {
     slice_tuple,
     ptrarray_naked,
     ptrarray_tuple,
-    single_naked,
     single_tuple,
     niladic,
+    generator,
 };
 
 /// A trial is the result of a series of samples. A sample is

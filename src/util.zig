@@ -44,15 +44,20 @@ pub inline fn argstype_of(x: type) ArgsType {
                 else => @compileError("multi element and c pointers cannot be argstype"),
             }
         },
-        .@"struct" => @compileError("nyi tuple/generator argstype"),
+        .@"struct" => |s| {
+            if (@hasDecl(x, "_zmida_generator_")) return .generator;
+            if (s.is_tuple) return .single_tuple;
+            @compileError("wrap single struct in a tuple, similar to @call");
+        },
         .void => return .niladic,
-        else => @compileError("nyi single argstype"),
+        else => @compileError("wrap single aruments in a tuple, similar to @call"),
     }
 }
 
 pub inline fn argslen(x: anytype) usize {
     return switch (argstype_of(@TypeOf(x))) {
-        .single_naked, .single_tuple, .niladic => 1,
+        .single_tuple, .niladic => 1,
+        .generator => x.nargs(),
         else => x.len,
     };
 }

@@ -4,6 +4,7 @@ This is for benchmarking high performance, cpu bound code.
 
 - arbitary argument functions
 - by count or by time trials
+- input by slice, array, single value, or generator
 - same inputs to multiple functions
 - TSC based timing if available
 - perf_event counts (instr, cycles, branches)
@@ -45,10 +46,9 @@ A lot of the top level functions have some comptime
 This are the next few thigs I want to work on:
 
 - make some simple functions for most basic "bench this"
+- write basic radom and iterator generators
 - add adaptive mode that run by-count trials by estimating workload
 - better documentation
-- single argument input (no slice, single tuple, niladic)
-- generator argument input (eg, 1 to 100 by 0.1)
 - gnuplot: less ugly output and chart options
 - gnuplot: add basic bar (relative mode, perf events)
 - perf counters for cache (also perf multiplexed adj)

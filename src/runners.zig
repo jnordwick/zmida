@@ -5,6 +5,7 @@ const tt = std.testing;
 const ArgsType = @import("trial.zig").ArgsType;
 const perf = @import("perf.zig");
 const root = @import("root.zig");
+const util = @import("util.zig");
 const Env = root.Env;
 const Sample = root.Sample;
 const time = @import("time.zig");
@@ -19,9 +20,14 @@ inline fn call(func: anytype, arg: anytype) void {
 
 inline fn sweep(comptime argstype: ArgsType, func: anytype, args: anytype) void {
     switch (argstype) {
-        .single_naked => call(func, .{args}),
         .single_tuple => call(func, args),
         .niladic => call(func, .{}),
+        .generator => {
+            var gen = args;
+            while (gen.next()) |a| {
+                call(func, a);
+            }
+        },
         else => {
             for (args) |*a| {
                 switch (argstype) {
@@ -60,7 +66,7 @@ pub fn count_sample(comptime argstype: ArgsType, env: Env, sweeps: u64, func: an
         try p.read(&ps);
         sample.cpu_perf = .init(&ps);
     }
-    sample.calls = sweeps * args.len;
+    sample.calls = sweeps * util.argslen(args);
     sample.nanos = timer.nanos();
     return sample;
 }
@@ -110,16 +116,17 @@ pub fn timed_sample(comptime argstype: ArgsType, env: Env, nanos: u64, func: any
         try p.read(&ps);
         sample.cpu_perf = .init(&ps);
     }
-    sample.calls = sweeps * args.len;
+    sample.calls = sweeps * util.argslen(args);
     sample.nanos = timer.nanos();
     timer_thread.join();
 
     return sample;
 }
 
-// --------------------
-// Test
-// --------------------
+// ----------------
+// |     Test     |
+// ----------------
+
 test {
     std.testing.refAllDecls(@This());
 }
@@ -146,7 +153,7 @@ fn make_tuples(comptime n: u64, comptime from: f64, comptime to: f64) [n]struct 
     return arr;
 }
 
-test "count_sample single" {
+test "count_sample slice naked" {
     const env = Env{ .alloc = tt.allocator, .io = tt.io };
     const args = make_floats(5, 0.0, 20.0);
     const args_slice: []const f64 = @ptrCast(&args);
@@ -159,6 +166,56 @@ test "count_sample single" {
         args_slice,
     );
     try tt.expect(t.calls == 15);
+}
+
+test "count_sample single tuple" {
+    const env = Env{ .alloc = tt.allocator, .io = tt.io };
+    const arg: f64 = 0.6;
+    const t = try count_sample(.single_tuple, env, 30, std.math.sin, .{arg});
+    try tt.expect(t.calls == 30);
+}
+
+test "count_sample generator" {
+    const test_gen = struct {
+        pub const _zmida_generator_ = true;
+        begin: u64,
+        end: u64,
+        step: u64,
+        cur: u64,
+
+        pub fn init(begin: u64, end: u64, step: u64) @This() {
+            return .{ .begin = begin, .end = end, .step = step, .cur = begin };
+        }
+
+        pub fn nargs(this: *const @This()) u64 {
+            return (this.step - 1 + this.end - this.begin) / this.step;
+        }
+
+        pub fn next(this: *@This()) ?struct { f64 } {
+            if (this.cur >= this.end) return null;
+            const tmp = this.cur;
+            this.cur += this.step;
+            return .{@as(f64, @floatFromInt(tmp))};
+        }
+    };
+
+    const env = Env{ .alloc = tt.allocator, .io = tt.io };
+    const arg: test_gen = .init(0, 10, 2);
+    const t = try count_sample(.generator, env, 5, std.math.sin, arg);
+    try tt.expect(t.calls == 25);
+}
+
+test "count_sample nil" {
+    const env = Env{ .alloc = tt.allocator, .io = tt.io };
+    const func = struct {
+        pub fn sin45() f64 {
+            var x: f64 = 0;
+            std.mem.doNotOptimizeAway(&x);
+            return std.math.sin(x);
+        }
+    }.sin45;
+    const t = try count_sample(.niladic, env, 30, func, {});
+    try tt.expect(t.calls == 30);
 }
 
 test "count_samples multiple" {
@@ -192,6 +249,26 @@ test "timed_samples single" {
     try tt.expect(t.calls % 100 == 0);
     try tt.expect(t.nanos > 50 * 1000 * 1000);
     try tt.expect(t.nanos < 51 * 1000 * 1000);
+}
+
+test "timed_sample nil" {
+    const env = Env{ .alloc = tt.allocator, .io = tt.io };
+    const func = struct {
+        pub fn sin45() f64 {
+            var x: f64 = 0;
+            std.mem.doNotOptimizeAway(&x);
+            return std.math.sin(x);
+        }
+    }.sin45;
+    const t = try timed_sample(.niladic, env, 10 * 1e6, func, {});
+    try tt.expect(t.calls > 100);
+}
+
+test "timed_sample single tuple" {
+    const env = Env{ .alloc = tt.allocator, .io = tt.io };
+    const arg: f64 = 0.6;
+    const t = try timed_sample(.single_tuple, env, 5 * 1e6, std.math.sin, .{arg});
+    try tt.expect(t.calls > 100); // prob much more
 }
 
 test "timed_samples multiple" {
