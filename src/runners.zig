@@ -13,8 +13,25 @@ const Timer = time.Timer;
 const AtomicBool = std.atomic.Value(bool);
 
 inline fn call(func: anytype, arg: anytype) void {
-    dno(arg);
+    dno(&arg);
     dno(@call(.auto, func, arg));
+}
+
+inline fn sweep(comptime argstype: ArgsType, func: anytype, args: anytype) void {
+    switch (argstype) {
+        .single_naked => call(func, .{args}),
+        .single_tuple => call(func, args),
+        .niladic => call(func, .{}),
+        else => {
+            for (args) |*a| {
+                switch (argstype) {
+                    .slice_naked, .ptrarray_naked => call(func, .{a.*}),
+                    .slice_tuple, .ptrarray_tuple => call(func, a.*),
+                    else => @panic("unexpected type"),
+                }
+            }
+        },
+    }
 }
 
 // -----------
@@ -23,12 +40,7 @@ inline fn call(func: anytype, arg: anytype) void {
 
 inline fn count_loop(comptime argstype: ArgsType, sweeps: u64, func: anytype, args: anytype) void {
     for (0..sweeps) |_| {
-        for (args) |*a| {
-            switch (argstype) {
-                .slice_tuple => call(func, a.*),
-                .slice_naked => call(func, .{a.*}),
-            }
-        }
+        sweep(argstype, func, args);
     }
 }
 
@@ -60,12 +72,7 @@ pub fn count_sample(comptime argstype: ArgsType, env: Env, sweeps: u64, func: an
 inline fn timed_loop(comptime argstype: ArgsType, done: *AtomicBool, func: anytype, args: anytype) u64 {
     var sweeps: u64 = 0;
     while (!done.load(.acquire)) {
-        for (args) |*a| {
-            switch (argstype) {
-                .slice_tuple => call(func, a.*),
-                .slice_naked => call(func, .{a.*}),
-            }
-        }
+        sweep(argstype, func, args);
         sweeps += 1;
     }
     return sweeps;

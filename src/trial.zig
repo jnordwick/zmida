@@ -34,6 +34,11 @@ pub const TrialDef = union(enum) {
 pub const ArgsType = enum {
     slice_naked,
     slice_tuple,
+    ptrarray_naked,
+    ptrarray_tuple,
+    single_naked,
+    single_tuple,
+    niladic,
 };
 
 /// A trial is the result of a series of samples. A sample is
@@ -69,10 +74,7 @@ pub const Trial = struct {
         const argstype = util.argstype_of(@TypeOf(args));
         try this.data.ensureTotalCapacity(this.def.count.trial_samples);
         this.data.clearRetainingCapacity();
-        this.calls_per_sweep = switch (argstype) {
-            .slice_naked => args.len,
-            .slice_tuple => args.len,
-        };
+        this.calls_per_sweep = util.argslen(args);
 
         root.verbose(1, "  Trial {s} with {d} samples @ {d} calls each", .{
             this.name,
@@ -123,10 +125,7 @@ pub const Trial = struct {
         const argstype = util.argstype_of(@TypeOf(args));
         try this.data.ensureTotalCapacity(this.def.timed.trial_samples);
         this.data.clearRetainingCapacity();
-        this.calls_per_sweep = switch (argstype) {
-            .slice_naked => args.len,
-            .slice_tuple => args.len,
-        };
+        this.calls_per_sweep = args.len;
 
         root.verbose(1, "  Trial {s} with {d} samples @ {d:.3}ms", .{
             this.name,

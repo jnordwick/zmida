@@ -31,18 +31,30 @@ pub fn idiv_up(T: type, n: anytype, d: anytype) T {
 
 pub inline fn argstype_of(x: type) ArgsType {
     switch (@typeInfo(x)) {
-        .void => @compileError("nyi niladic argstype"),
-        .array => @compileError("nyi array argstype"),
+        .array => @compileError("bad argstype: use ptr to array instead"),
         .pointer => |p| {
             switch (p.size) {
                 .slice => return if (is_tuple(p.child)) .slice_tuple else .slice_naked,
-                .one => @compileError("nyi array argstype"),
+                .one => {
+                    switch (@typeInfo(p.child)) {
+                        .array => |pa| return if (is_tuple(pa.child)) .ptrarray_tuple else .ptrarray_naked,
+                        else => @compileError("bad argstype: ptr to bad type"),
+                    }
+                },
                 else => @compileError("multi element and c pointers cannot be argstype"),
             }
         },
-        .@"struct" => @compileLog("nyi tuple/generator argstype"),
-        else => @compileLog("nyi single argstype"),
+        .@"struct" => @compileError("nyi tuple/generator argstype"),
+        .void => return .niladic,
+        else => @compileError("nyi single argstype"),
     }
+}
+
+pub inline fn argslen(x: anytype) usize {
+    return switch (argstype_of(@TypeOf(x))) {
+        .single_naked, .single_tuple, .niladic => 1,
+        else => x.len,
+    };
 }
 
 pub inline fn from_slice_like(Elem: type, x: anytype) []const Elem {

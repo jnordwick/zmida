@@ -128,7 +128,7 @@ pub const Study = struct {
             .trials = .init(alloc),
             .stats = .init(alloc),
         };
-        this.def = this.build_def(config, args.len);
+        this.def = this.build_def(config, args);
         if (gopts.perf) {
             const events = [_]perf.Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total };
             verbose(1, "Installing performance counters\n", .{});
@@ -149,7 +149,8 @@ pub const Study = struct {
         return this;
     }
 
-    fn build_def(_: *@This(), config: Config, nargs: usize) TrialDef {
+    fn build_def(_: *@This(), config: Config, args: anytype) TrialDef {
+        const nargs = util.argslen(args);
         switch (config) {
             .count => |c| {
                 return .{ .count = .{
