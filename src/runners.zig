@@ -167,13 +167,17 @@ test "count_sample generator" {
         end: u64,
         step: u64,
         cur: u64,
+        len: u64,
 
         pub fn init(begin: u64, end: u64, step: u64) @This() {
-            return .{ .begin = begin, .end = end, .step = step, .cur = begin };
-        }
-
-        pub fn nargs(this: *const @This()) u64 {
-            return (this.step - 1 + this.end - this.begin) / this.step;
+            const len = (step - 1 + end - begin) / step;
+            return .{
+                .begin = begin,
+                .end = end,
+                .step = step,
+                .cur = begin,
+                .len = len,
+            };
         }
 
         pub fn next(this: *@This()) ?struct { f64 } {
