@@ -204,7 +204,7 @@ pub const Study = struct {
     }
 
     pub fn write_samples(this: *@This(), fname: ?[]const u8, opts: SamplesOpts) !void {
-        this.statistics();
+        try this.statistics();
         const file = try util.get_file(this.env, fname, "-samples.csv");
         defer if (fname != null) file.close(this.env.io);
         var writer = file.writer(this.env.io, &.{});

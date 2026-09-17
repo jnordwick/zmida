@@ -1,4 +1,5 @@
 const std = @import("std");
+const gen = @import("gen.zig");
 const dno = std.mem.doNotOptimizeAway;
 const tt = std.testing;
 
@@ -23,8 +24,8 @@ inline fn sweep(comptime argstype: ArgsType, func: anytype, args: anytype) void 
         .single_tuple => call(func, args),
         .niladic => call(func, .{}),
         .generator => {
-            var gen = args;
-            while (gen.next()) |a| {
+            var gener = args;
+            while (gener.next()) |a| {
                 call(func, a);
             }
         },
@@ -131,31 +132,15 @@ test {
     std.testing.refAllDecls(@This());
 }
 
-fn make_floats(comptime n: u64, comptime from: f64, comptime to: f64) [n]f64 {
-    var arr: [n]f64 = undefined;
-    const diff = to - from;
-    var rand: std.Random.Xoshiro256 = .init(0);
-    var rr = rand.random();
-    for (&arr) |*a| {
-        a.* = from + diff * rr.float(f64);
-    }
-    return arr;
-}
-
-fn make_tuples(comptime n: u64, comptime from: f64, comptime to: f64) [n]struct { comptime type = f64, f64, f64 } {
-    var arr: [n]struct { comptime type = f64, f64, f64 } = undefined;
-    const diff = to - from;
-    var rand: std.Random.Xoshiro256 = .init(0);
-    var rr = rand.random();
-    for (&arr) |*a| {
-        a.* = .{ f64, from + diff * rr.float(f64) * 100, from + diff * rr.float(f64) };
-    }
-    return arr;
+fn mktuple(comptime n: u64, from: f64, to: f64) [n]struct { comptime type = f64, f64, f64 } {
+    const x = gen.uniform(f64, n, from, to, 0);
+    const y = gen.uniform(f64, n, from, to, 0);
+    return gen.tie2t(f64, n, x, y);
 }
 
 test "count_sample slice naked" {
     const env = Env{ .alloc = tt.allocator, .io = tt.io };
-    const args = make_floats(5, 0.0, 20.0);
+    const args = gen.uniform(f64, 5, 0, 20, 0);
     const args_slice: []const f64 = @ptrCast(&args);
 
     const t = try count_sample(
@@ -220,7 +205,7 @@ test "count_sample nil" {
 
 test "count_samples multiple" {
     const env = Env{ .alloc = tt.allocator, .io = tt.io };
-    const args = make_tuples(10, 2, 20);
+    const args = mktuple(10, 2, 20);
     const arg_t = struct { comptime type = f64, f64, f64 };
     const args_slice: []const arg_t = @ptrCast(&args);
 
@@ -236,7 +221,7 @@ test "count_samples multiple" {
 
 test "timed_samples single" {
     const env = Env{ .alloc = tt.allocator, .io = tt.io };
-    const args = make_floats(100, 0.0, 1000.0);
+    const args = gen.uniform(f64, 100, 0, 1000, 0);
     const args_slice: []const f64 = @ptrCast(&args);
 
     const t = try timed_sample(
@@ -274,7 +259,7 @@ test "timed_sample single tuple" {
 test "timed_samples multiple" {
     const arg_t = struct { comptime type = f64, f64, f64 };
     const env = Env{ .alloc = tt.allocator, .io = tt.io };
-    const args = make_tuples(100, 2, 20);
+    const args = mktuple(100, 2, 20);
     const args_slice: []const arg_t = @ptrCast(&args);
 
     const t = try timed_sample(

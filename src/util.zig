@@ -57,7 +57,6 @@ pub inline fn argstype_of(x: type) ArgsType {
 pub inline fn argslen(x: anytype) usize {
     return switch (argstype_of(@TypeOf(x))) {
         .single_tuple, .niladic => 1,
-        .generator => x.nargs(),
         else => x.len,
     };
 }

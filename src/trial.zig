@@ -76,7 +76,7 @@ pub const Trial = struct {
         this.data.clearRetainingCapacity();
         this.calls_per_sweep = util.argslen(args);
 
-        root.verbose(1, "  Trial {s} with {d} samples @ {d} calls each", .{
+        root.verbose(1, "  Trial {s} with {d} samples @ {d} calls/sample", .{
             this.name,
             this.def.count.trial_samples,
             this.def.count.sample_sweeps * this.calls_per_sweep,
