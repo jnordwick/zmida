@@ -19,6 +19,7 @@ pub const TrialStats = struct {
     perf_instructions: u64 = 0,
     perf_branch_miss: u64 = 0,
     perf_branch_total: u64 = 0,
+    perf_imiss_total: u64 = 0,
 
     percentiles: [101]f64 = undefined,
 
@@ -34,6 +35,7 @@ pub const TrialStats = struct {
         var perf_instructions: u64 = 0;
         var perf_branch_miss: u64 = 0;
         var perf_branch_total: u64 = 0;
+        var perf_imiss_total: u64 = 0;
 
         for (runs_slice) |batch| {
             if (batch.calls == 0) @panic("batch had zero calls");
@@ -46,6 +48,7 @@ pub const TrialStats = struct {
             perf_instructions += batch.cpu_perf.instructions;
             perf_branch_miss += batch.cpu_perf.branch_miss;
             perf_branch_total += batch.cpu_perf.branch_total;
+            perf_imiss_total += batch.cpu_perf.l1i_read_miss;
         }
 
         const lat = latencies(alloc, trial.data.items);
@@ -65,6 +68,7 @@ pub const TrialStats = struct {
             .perf_instructions = perf_instructions,
             .perf_branch_miss = perf_branch_miss,
             .perf_branch_total = perf_branch_total,
+            .perf_imiss_total = perf_imiss_total,
             .percentiles = percentiles(lat),
         };
     }

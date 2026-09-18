@@ -2,6 +2,8 @@ const std = @import("std");
 const root = @import("root.zig");
 const time = @import("time.zig");
 const float_div = @import("util.zig").float_div;
+const floor = std.math.floor;
+const log = std.math.log;
 
 const text_header =
     \\{[name]s}
@@ -29,7 +31,7 @@ pub fn text_thruput(
         name_len = @max(name_len, stats.trial.name.len);
         max_avg = @max(max_avg, 1e9 / stats.call_avg_ns);
     }
-    const groups: u32 = @intFromFloat(std.math.floor(std.math.log(f64, 1000.0, max_avg)));
+    const groups: u32 = @intFromFloat(floor(log(f64, 1000.0, max_avg)));
     _, const longunits, const factor: f64 = switch (groups) {
         0 => .{ "ops", "ops/sec", 1e9 },
         1 => .{ "Kops", "Kops/sec", 1e6 },
@@ -40,7 +42,7 @@ pub fn text_thruput(
     const vbar, const hbar, const plus =
         if (opts.ascii) .{ "|", "-", "+" } else .{ "\u{2502}", "\u{2500}", "\u{253c}" };
 
-    if (opts.header) {
+    if (opts.with_header) {
         try writer.print(text_header, .{
             .name = title,
             .mode = "throughput (higher is better)",
@@ -115,7 +117,7 @@ pub fn text_thruput(
     try writer.flush();
     try writer.writeByte('\n');
     try writer.writeByte('\n');
-    try text_perf(writer, trials, opts);
+    if (opts.with_perf) try text_perf(writer, trials, opts);
 }
 
 pub fn text_perf(
@@ -134,7 +136,8 @@ pub fn text_perf(
         "{[name]s: <[max_name_len]} {[vbar]s}" ++
             "{[ipc]s: >7} " ++
             "{[inst]s: >10} " ++
-            "{[cyc]s: >10} {[vbar]s}" ++
+            "{[cyc]s: >10} " ++
+            "{[imiss]s: >8} {[vbar]s}" ++
             "{[brmrt]s: >8} " ++
             "{[brmiss]s: >10} " ++
             "{[brtot]s: >10}\n",
@@ -143,6 +146,7 @@ pub fn text_perf(
             .max_name_len = max_name_len + 1,
             .ipc = "ipc",
             .inst = "insts",
+            .imiss = "imiss",
             .cyc = "cycles",
             .brmrt = "miss/M",
             .brmiss = "misses",
@@ -154,7 +158,7 @@ pub fn text_perf(
     var separator_len = max_name_len + 2;
     try write_n(writer, hbar, separator_len);
     try write_n(writer, plus, 1);
-    separator_len = 1 + 8 + 2 * 11;
+    separator_len = 1 + 2 * 8 + 2 * 11;
     try write_n(writer, hbar, separator_len);
     try write_n(writer, plus, 1);
     separator_len = 8 + 2 * 11;
@@ -168,7 +172,8 @@ pub fn text_perf(
             "{[name]s: <[max_name_len]} {[vbar]s}" ++
                 "{[ipc]d: >7.3} " ++
                 "{[inst]d: >10.1} " ++
-                "{[cyc]d: >10.1} {[vbar]s}" ++
+                "{[cyc]d: >10.1} " ++
+                "{[imiss]d: >8.3} {[vbar]s}" ++
                 "{[brmsrt]d: >8.2} " ++
                 "{[brmiss]d: >10.3} " ++
                 "{[brtot]d: >10.1}\n",
@@ -177,6 +182,7 @@ pub fn text_perf(
                 .max_name_len = max_name_len + 1,
                 .ipc = ipc,
                 .inst = float_div(f64, stats.perf_instructions, stats.trial_calls),
+                .imiss = float_div(f64, stats.perf_imiss_total, stats.trial_calls),
                 .cyc = float_div(f64, stats.perf_cpu_cycles, stats.trial_calls),
                 .brmsrt = brmsrt,
                 .brmiss = float_div(f64, stats.perf_branch_miss, stats.trial_calls),
@@ -200,7 +206,7 @@ pub fn text_latency(
         name_len = @max(name_len, stats.trial.name.len);
         max_avg = @max(max_avg, stats.call_avg_ns);
     }
-    const groups: u32 = @intFromFloat(std.math.floor(std.math.log(f64, 1000.0, max_avg)));
+    const groups: u32 = @intFromFloat(floor(log(f64, 1000.0, max_avg)));
     _, const longunits, const factor: f64 = switch (groups) {
         0 => .{ "ns", "nanosec/op", 1.0 },
         1 => .{ "us", "microsec/op", 1e-3 },
@@ -210,7 +216,7 @@ pub fn text_latency(
 
     const vbar, const hbar, const plus = if (opts.ascii) .{ "|", "-", "+" } else .{ "\u{2502}", "\u{2500}", "\u{253c}" };
 
-    if (opts.header) {
+    if (opts.with_header) {
         try writer.print(text_header, .{
             .name = title,
             .mode = "latency (lower is better)",
@@ -285,7 +291,7 @@ pub fn text_latency(
     try writer.flush();
     try writer.writeByte('\n');
     try writer.writeByte('\n');
-    try text_perf(writer, trials, opts);
+    try if (opts.with_perf) text_perf(writer, trials, opts);
 }
 
 pub fn csv_summary(
@@ -294,12 +300,27 @@ pub fn csv_summary(
     opts: root.SummaryOpts,
 ) !void {
     const cols = [_]u32{ 100, 75, 50, 25, 0 };
-    try writer.print("fn{[sep]c}calls{[sep]c}seconds{[sep]c}mean", .{ .sep = opts.separator });
-    for (&cols) |c| {
-        try writer.print(",p{d}", .{c});
-    }
-    try writer.writeByte('\n');
 
+    // header
+    if (opts.with_header) {
+        try writer.print(
+            "fn{[sep]c}calls{[sep]c}seconds{[sep]c}mean",
+            .{ .sep = opts.separator },
+        );
+        for (&cols) |c| {
+            try writer.print("{c}p{d}", .{ opts.separator, c });
+        }
+
+        // perf header
+        if (opts.with_perf) {
+            try writer.print("{[0]c}perf_enable{[0]c}perf_running" ++
+                "{[0]c}perf_cpucycles{[0]c}perf_inst{[0]c}erf_branchmiss" ++
+                "{[0]c}perf_branches{[0]c}perf_imiss", .{opts.separator});
+        }
+        try writer.writeByte('\n');
+    }
+
+    // data
     for (trials) |t| {
         try writer.print(
             "{[name]s}{[sep]c}{[calls]d}{[sep]c}{[time]d:.4}{[sep]c}{[mean]d:.4}",
@@ -316,6 +337,23 @@ pub fn csv_summary(
                 .v = t.percentiles[c],
                 .sep = opts.separator,
             });
+        }
+        if (opts.with_perf) {
+            try writer.print(
+                "{[s]c}{[enabled]d}{[s]c}{[running]d}{[s]c}" ++
+                    "{[cpucycles]d}{[s]c}{[inst]d}{[s]c}{[brmiss]d}" ++
+                    "{[s]c}{[branches]d}{[s]c}{[imiss]d}",
+                .{
+                    .s = opts.separator,
+                    .enabled = t.perf_time_enabled,
+                    .running = t.perf_time_running,
+                    .cpucycles = t.perf_cpu_cycles,
+                    .inst = t.perf_instructions,
+                    .brmiss = t.perf_branch_miss,
+                    .branches = t.perf_branch_total,
+                    .imiss = t.perf_imiss_total,
+                },
+            );
         }
         try writer.writeByte('\n');
     }

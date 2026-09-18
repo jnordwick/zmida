@@ -18,12 +18,18 @@ pub const TrialDef = trial.TrialDef;
 
 pub const GlobalOpts = struct {
     debug_warn: bool = true,
-    verbose: u32 = 0,
+    verbose: u32 = 1,
     use_tsc: bool = false,
-    perf: bool = false,
+    perf: bool = true,
 };
 
 pub var gopts = GlobalOpts{};
+
+pub fn set_global_opts(opts: GlobalOpts) void {
+    gopts = opts;
+    time.Clock.setup(if (gopts.use_tsc) .tsc else .monotonic);
+    debug_warn();
+}
 
 pub fn verbose(comptime lev: u32, comptime fmt: []const u8, p: anytype) void {
     if (lev <= gopts.verbose) {
@@ -69,19 +75,23 @@ pub const Config = union(enum) {
 
 pub const TextOpts = struct {
     mode: enum { lat, thru } = .lat,
-    header: bool = true,
     ascii: bool = true,
+    with_header: bool = true,
+    with_perf: bool = true,
 };
 
 pub const SummaryOpts = struct {
     format: enum { csv } = .csv,
     separator: u8 = ',',
+    with_header: bool = true,
+    with_perf: bool = true,
     pctiles: []const u32 = &[_]u32{ 0, 25, 50, 75, 100 },
 };
 
 pub const SamplesOpts = struct {
     format: enum { csv } = .csv,
     separator: u8 = ',',
+    with_perf: bool = true,
 };
 
 pub const GnuplotOpts = struct {
@@ -93,12 +103,6 @@ pub const Env = struct {
     io: Io,
     perf: ?*perf.PerfEvent = null,
 };
-
-pub fn set_global_opts(opts: GlobalOpts) void {
-    gopts = opts;
-    time.Clock.setup(if (gopts.use_tsc) .tsc else .monotonic);
-    debug_warn();
-}
 
 pub const Study = struct {
     env: Env,
@@ -124,13 +128,12 @@ pub const Study = struct {
         var this = Study{
             .env = .{ .alloc = alloc, .io = io },
             .name = name orelse "zmida",
-            .def = undefined,
+            .def = build_def(config, args),
             .trials = .init(alloc),
             .stats = .init(alloc),
         };
-        this.def = this.build_def(config, args);
         if (gopts.perf) {
-            const events = [_]perf.Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total };
+            const events = [_]perf.Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
             verbose(1, "Installing performance counters\n", .{});
             const p = try this.env.alloc.create(perf.PerfEvent);
             p.* = .{};
@@ -149,7 +152,7 @@ pub const Study = struct {
         return this;
     }
 
-    fn build_def(_: *@This(), config: Config, args: anytype) TrialDef {
+    fn build_def(config: Config, args: anytype) TrialDef {
         const nargs = util.argslen(args);
         switch (config) {
             .count => |c| {
@@ -183,7 +186,9 @@ pub const Study = struct {
         }
     }
 
-    pub fn write_text(this: *@This(), fname: ?[]const u8, opts: TextOpts) !void {
+    pub fn write_text(this: *@This(), fname: ?[]const u8, topts: TextOpts) !void {
+        var opts = topts;
+        opts.with_perf &= this.env.perf != null;
         try this.statistics();
         const file = try util.get_file(this.env, fname, ".txt");
         defer if (fname != null) file.close(this.env.io);
@@ -195,7 +200,9 @@ pub const Study = struct {
         }
     }
 
-    pub fn write_summary(this: *@This(), fname: ?[]const u8, opts: SummaryOpts) !void {
+    pub fn write_summary(this: *@This(), fname: ?[]const u8, sopts: SummaryOpts) !void {
+        var opts = sopts;
+        opts.with_perf &= this.env.perf != null;
         try this.statistics();
         const file = try util.get_file(this.env, fname, "-summary.csv");
         defer if (fname != null) file.close(this.env.io);
@@ -203,7 +210,9 @@ pub const Study = struct {
         try out.csv_summary(&writer.interface, this.stats.items, opts);
     }
 
-    pub fn write_samples(this: *@This(), fname: ?[]const u8, opts: SamplesOpts) !void {
+    pub fn write_samples(this: *@This(), fname: ?[]const u8, sopts: SamplesOpts) !void {
+        var opts = sopts;
+        opts.with_perf &= this.end.perf != null;
         try this.statistics();
         const file = try util.get_file(this.env, fname, "-samples.csv");
         defer if (fname != null) file.close(this.env.io);
@@ -236,6 +245,7 @@ pub const CpuCounters = struct {
     instructions: u64 = 0,
     branch_miss: u64 = 0,
     branch_total: u64 = 0,
+    l1i_read_miss: u64 = 0,
 
     pub fn init(ps: *const perf.Sample) CpuCounters {
         return .{
@@ -245,6 +255,7 @@ pub const CpuCounters = struct {
             .cpu_cycles = ps.records[1],
             .branch_miss = ps.records[2],
             .branch_total = ps.records[3],
+            .l1i_read_miss = ps.records[4],
         };
     }
 };

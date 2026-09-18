@@ -5,22 +5,40 @@ const perf_event_open = std.posix.perf_event_open;
 const system = std.posix.system;
 const perf_event_attr = system.perf_event_attr;
 
-pub const max_events = 4;
+pub const max_events = 8;
 
 const PERF_IOC_FLAG_GROUP: usize = 1;
 
 pub const Event = struct {
+    const HW = PERF.COUNT.HW;
+    const CACHE = PERF.COUNT.HW.CACHE;
+
     typ: PERF.TYPE,
     config: u64,
 
-    pub fn make(t: PERF.TYPE, s: anytype) Event {
-        return .{ .typ = t, .config = @intFromEnum(s) };
+    pub fn make_hw(s: HW) Event {
+        return .{ .typ = .HARDWARE, .config = @intFromEnum(s) };
     }
 
-    pub const cpu_cycles = Event.make(.HARDWARE, PERF.COUNT.HW.CPU_CYCLES);
-    pub const retired_instr = Event.make(.HARDWARE, PERF.COUNT.HW.INSTRUCTIONS);
-    pub const branch_total = Event.make(.HARDWARE, PERF.COUNT.HW.BRANCH_INSTRUCTIONS);
-    pub const branch_miss = Event.make(.HARDWARE, PERF.COUNT.HW.BRANCH_MISSES);
+    pub fn make_cache(lev: CACHE, op: CACHE.OP, res: CACHE.RESULT) Event {
+        const config = @intFromEnum(lev) | (@intFromEnum(op) << 8) | (@intFromEnum(res) << 16);
+        return .{ .typ = .HW_CACHE, .config = config };
+    }
+
+    pub const cpu_cycles = Event.make_hw(.CPU_CYCLES);
+    pub const retired_instr = Event.make_hw(.INSTRUCTIONS);
+    pub const branch_total = Event.make_hw(.BRANCH_INSTRUCTIONS);
+    pub const branch_miss = Event.make_hw(.BRANCH_MISSES);
+    pub const l1i_read_miss = Event.make_cache(.L1I, .READ, .MISS);
+
+    pub const l1d_read = Event.make_cache(.L1D, .READ, .ACCESS);
+    pub const l1d_read_miss = Event.make_cache(.L1D, .READ, .MISS);
+    pub const l1d_write = Event.make_cache(.L1D, .WRITE, .ACCESS);
+
+    pub const ll_read = Event.make_cache(.LL, .READ, .ACCESS);
+    pub const ll_read_miss = Event.make_cache(.LL, .READ, .MISS);
+    pub const ll_write = Event.make_cache(.LL, .WRITE, .ACCESS);
+    pub const ll_write_miss = Event.make_cache(.LL, .WRITE, .MISS);
 };
 
 pub const Sample = extern struct {
@@ -180,46 +198,38 @@ fn workload(reps: u64) void {
 const tt = std.testing;
 const now = @import("time.zig").now;
 
-// test {
-//     const events = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total };
-//     //const names = [_][]const u8{ "retired", "cycles", "branch miss", "branch total" };
-//     var stats: PerfEvent = .{};
-//     try stats.add_many(&events);
-//     try stats.install();
-//     try stats.enable();
-//     workload(1_000_000);
-//     try stats.disable();
+test {
+    const events = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
+    var stats: PerfEvent = .{};
+    try stats.add_many(&events);
+    try stats.install();
+    try stats.enable();
+    workload(1_000_000);
+    try stats.disable();
 
-//     {
-//         var samp: Sample = .{};
-//         try stats.read(&samp);
-//         const e = samp.events();
-//         std.debug.print("{any}\n{any}\n", .{ samp, e });
-//     }
+    {
+        var samp: Sample = .{};
+        try stats.read(&samp);
+        const e = samp.events();
+        std.debug.print("{any}\n{any}\n", .{ samp, e });
+    }
 
-//     try stats.reset();
-//     {
-//         var samp: Sample = .{};
-//         try stats.read(&samp);
-//         const e = samp.events();
-//         std.debug.print("{any}\n{any}\n", .{ samp, e });
-//     }
+    try stats.reset();
+    {
+        var samp: Sample = .{};
+        try stats.read(&samp);
+        const e = samp.events();
+        std.debug.print("{any}\n{any}\n", .{ samp, e });
+    }
 
-//     try stats.enable();
-//     workload(1_000_000);
-//     try stats.disable();
+    try stats.enable();
+    workload(1_000_000);
+    try stats.disable();
 
-//     {
-//         var samp: Sample = .{};
-//         try stats.read(&samp);
-//         const e = samp.events();
-//         std.debug.print("{any}\n{any}\n", .{ samp, e });
-//     }
-
-//     // try tt.expectEqual(@as(usize, 4), e.len);
-//     // try tt.expect(samp.running > 0);
-//     // try tt.expect(samp.enabled > 0);
-//     // for (e) |s| {
-//     //     try tt.expect(s > 0);
-//     // }
-// }
+    {
+        var samp: Sample = .{};
+        try stats.read(&samp);
+        const e = samp.events();
+        std.debug.print("{any}\n{any}\n", .{ samp, e });
+    }
+}
