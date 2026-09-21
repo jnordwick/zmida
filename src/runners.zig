@@ -4,11 +4,11 @@ const dno = std.mem.doNotOptimizeAway;
 const tt = std.testing;
 
 const ArgsType = @import("trial.zig").ArgsType;
-const perf = @import("perf.zig");
 const root = @import("root.zig");
 const util = @import("util.zig");
 const Env = root.Env;
 const Sample = root.Sample;
+const MemSample = root.MemSample;
 const time = @import("time.zig");
 const Timer = time.Timer;
 
@@ -51,22 +51,12 @@ inline fn count_loop(comptime argstype: ArgsType, sweeps: u64, func: anytype, ar
     }
 }
 
-pub fn count_sample(comptime argstype: ArgsType, env: Env, sweeps: u64, func: anytype, args: anytype) !Sample {
+pub fn count_sample(comptime argstype: ArgsType, _: Env, sweeps: u64, func: anytype, args: anytype) !Sample {
     var sample: Sample = .{};
     var timer: Timer = undefined;
-    if (env.perf) |e| {
-        try e.reset();
-        try e.enable();
-    }
     timer.start();
     count_loop(argstype, sweeps, func, args);
     timer.stop();
-    if (env.perf) |p| {
-        try p.disable();
-        var ps: perf.Sample = .{};
-        try p.read(&ps);
-        sample.cpu_perf = .init(&ps);
-    }
     sample.calls = sweeps * util.argslen(args);
     sample.nanos = timer.nanos();
     return sample;
@@ -93,7 +83,7 @@ pub fn set_bool(start: *AtomicBool, stop: *AtomicBool, nanos: u64) void {
     stop.store(true, .release);
 }
 
-pub fn timed_sample(comptime argstype: ArgsType, env: Env, nanos: u64, func: anytype, args: anytype) !Sample {
+pub fn timed_sample(comptime argstype: ArgsType, _: Env, nanos: u64, func: anytype, args: anytype) !Sample {
     var sample: Sample = .{};
     var start: AtomicBool = .init(false);
     var done: AtomicBool = .init(false);
@@ -104,23 +94,12 @@ pub fn timed_sample(comptime argstype: ArgsType, env: Env, nanos: u64, func: any
     ) catch @panic("could not spawn");
     var timer: Timer = undefined;
     start.store(true, .release);
-    if (env.perf) |e| {
-        try e.reset();
-        try e.enable();
-    }
     timer.start();
     const sweeps = timed_loop(argstype, &done, func, args);
     timer.stop();
-    if (env.perf) |p| {
-        try p.disable();
-        var ps: perf.Sample = .{};
-        try p.read(&ps);
-        sample.cpu_perf = .init(&ps);
-    }
+    timer_thread.join();
     sample.calls = sweeps * util.argslen(args);
     sample.nanos = timer.nanos();
-    timer_thread.join();
-
     return sample;
 }
 

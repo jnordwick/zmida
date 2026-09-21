@@ -70,6 +70,57 @@ pub const Trial = struct {
         }
     }
 
+    // pub fn perf_bycount(this: *@This(), func: anytype, args: anytype) !void {
+    //     const argstype = util.argstype_of(@TypeOf(args));
+    //     try this.data.ensureTotalCapacity(this.def.count.trial_samples);
+    //     this.data.clearRetainingCapacity();
+    //     this.calls_per_sweep = util.argslen(args);
+
+    //     root.verbose(1, "  Trial {s} with {d} samples @ {d} calls/sample", .{
+    //         this.name,
+    //         this.def.count.trial_samples,
+    //         this.def.count.sample_sweeps * this.calls_per_sweep,
+    //     });
+
+    //     // warmup
+    //     if (this.env.perf) |e| try e.enable();
+    //     dno(try runners.count_sample(
+    //         argstype,
+    //         this.env,
+    //         this.def.count.warmup_sweeps,
+    //         func,
+    //         args,
+    //     ));
+
+    //     // reinstall to clear time counters
+    //     if (this.env.perf) |e| try e.reinstall();
+    //     for (0..this.def.count.trial_samples) |i| {
+    //         root.verbose(2, " {d}", i + 1);
+    //         var res = try runners.count_sample(
+    //             argstype,
+    //             this.env,
+    //             this.def.count.sample_sweeps,
+    //             func,
+    //             args,
+    //         );
+    //         res.ord = i;
+    //         try this.data.append(res);
+    //     }
+    //     root.verbose(1, "\n", .{});
+
+    //     if (this.env.perf) |_| {
+    //         // adjust cumulative cpu times back to individual
+    //         const tdlen = this.data.items.len;
+    //         for (1..tdlen) |i| {
+    //             this.data.items[tdlen - i].cpu_perf.time_enabled -=
+    //                 this.data.items[tdlen - i - 1].cpu_perf.time_enabled;
+
+    //             this.data.items[tdlen - i].cpu_perf.time_running -=
+    //                 this.data.items[tdlen - i - 1].cpu_perf.time_running;
+    //         }
+    //     }
+    // }
+
     pub fn bycount(this: *@This(), func: anytype, args: anytype) !void {
         const argstype = util.argstype_of(@TypeOf(args));
         try this.data.ensureTotalCapacity(this.def.count.trial_samples);
@@ -83,7 +134,6 @@ pub const Trial = struct {
         });
 
         // warmup
-        if (this.env.perf) |e| try e.enable();
         dno(try runners.count_sample(
             argstype,
             this.env,
@@ -93,7 +143,6 @@ pub const Trial = struct {
         ));
 
         // reinstall to clear time counters
-        if (this.env.perf) |e| try e.reinstall();
         for (0..this.def.count.trial_samples) |i| {
             root.verbose(2, " {d}", i + 1);
             var res = try runners.count_sample(
@@ -107,18 +156,6 @@ pub const Trial = struct {
             try this.data.append(res);
         }
         root.verbose(1, "\n", .{});
-
-        if (this.env.perf) |_| {
-            // adjust cumulative cpu times back to individual
-            const tdlen = this.data.items.len;
-            for (1..tdlen) |i| {
-                this.data.items[tdlen - i].cpu_perf.time_enabled -=
-                    this.data.items[tdlen - i - 1].cpu_perf.time_enabled;
-
-                this.data.items[tdlen - i].cpu_perf.time_running -=
-                    this.data.items[tdlen - i - 1].cpu_perf.time_running;
-            }
-        }
     }
 
     pub fn bytimed(this: *@This(), func: anytype, args: anytype) !void {
@@ -134,7 +171,6 @@ pub const Trial = struct {
         });
 
         // warmup
-        if (this.env.perf) |e| try e.enable();
         dno(try runners.timed_sample(
             argstype,
             this.env,
@@ -144,7 +180,6 @@ pub const Trial = struct {
         ));
 
         // reinstall to clear time counters
-        if (this.env.perf) |e| try e.reinstall();
         for (0..this.def.timed.trial_samples) |i| {
             root.verbose(2, " {d}", i + 1);
             var res = try runners.timed_sample(
@@ -158,16 +193,6 @@ pub const Trial = struct {
             try this.data.append(res);
         }
         root.verbose(1, "\n", .{});
-
-        if (this.env.perf) |_| {
-            const tdlen = this.data.items.len;
-            for (1..tdlen) |i| {
-                this.data.items[tdlen - i].cpu_perf.time_enabled -=
-                    this.data.items[tdlen - i - 1].cpu_perf.time_enabled;
-                this.data.items[tdlen - i].cpu_perf.time_running -=
-                    this.data.items[tdlen - i - 1].cpu_perf.time_running;
-            }
-        }
     }
 
     pub fn statistics(this: *@This(), env: Env) TrialStats {

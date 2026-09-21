@@ -12,11 +12,11 @@ pub fn main(init: std.process.Init) !void {
     //const xx_slice: []f64 = @ptrCast(&xx);
     const funcs = .{ tgamma, lgamma, tgamma, lgamma };
 
-    zm.set_global_opts(.{ .verbose = 1, .use_tsc = true, .perf = true });
+    zm.set_global_opts(.{ .verbose = 1, .use_tsc = true });
     const config: zm.Config = .bycount(.{});
     var study = try zm.Study.run(init.gpa, init.io, null, config, funcs, &xx);
     try study.write_text(null, .{});
-    try study.write_summary(null, .{ .separator = ' ', .with_perf = true });
+    try study.write_summary(null, .{ .separator = ' ' });
     // try study.write_gnuplot("example", .{});
     defer study.deinit();
 }

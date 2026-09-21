@@ -5,6 +5,15 @@ const root = @import("root.zig");
 const ArgsType = @import("trial.zig").ArgsType;
 pub const Env = root.Env;
 
+pub fn iround(x: f64) i64 {
+    return @intCast(@round(x));
+}
+
+pub inline fn to_slice(T: type, S: type, x: *S) []T {
+    const len = @sizeOf(S) / @sizeOf(T);
+    return @as([*]T, @ptrCast(x))[0..len];
+}
+
 pub inline fn is_tuple(T: type) bool {
     return switch (@typeInfo(T)) {
         .@"struct" => |s| s.is_tuple,

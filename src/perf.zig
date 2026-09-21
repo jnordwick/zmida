@@ -1,9 +1,13 @@
 const std = @import("std");
+const errno = @import("errno.zig");
+const ArrayList = std.array_list.Managed;
+const Allocator = std.mem.Allocator;
 
-const PERF = std.os.linux.PERF;
-const perf_event_open = std.posix.perf_event_open;
-const system = std.posix.system;
-const perf_event_attr = system.perf_event_attr;
+const sys = std.os.linux;
+const fd_t = sys.fd_t;
+const pid_t = sys.pid_t;
+const PERF = sys.PERF;
+const perf_event_attr = sys.perf_event_attr;
 
 pub const max_events = 8;
 
@@ -45,7 +49,7 @@ pub const Sample = extern struct {
     nr: u64 = 0,
     enabled: u64 = 0,
     running: u64 = 0,
-    records: [max_events]u64 = @splat(0),
+    data: [max_events]u64 = @splat(0),
 
     pub fn buffer(this: *@This(), nevents: u64) []u8 {
         const ptr: [*]u8 = @ptrCast(this);
@@ -53,7 +57,18 @@ pub const Sample = extern struct {
     }
 
     pub fn events(this: *const @This()) []const u64 {
-        return this.records[0..this.nr];
+        return this.data[0..this.nr];
+    }
+
+    pub fn adj(T: type, this: *const @This(), i: usize) T {
+        const en: f64 = @floatFromInt(this.enabled);
+        const ru: f64 = @floatFromInt(this.running);
+        const d: f64 = @floatFromInt(this.data[i]);
+        return switch (@typeInfo(T)) {
+            .float => d,
+            .int => @intFromFloat(@round((en / ru) * d)),
+            else => @compileError("bad type"),
+        };
     }
 
     pub fn clear(this: *@This()) void {
@@ -61,28 +76,22 @@ pub const Sample = extern struct {
     }
 };
 
-pub const PerfEvent = struct {
+pub const PerfProbe = struct {
     nevents: u64 = 0,
-    fds: [max_events]system.fd_t = @splat(0),
+    fds: [max_events]fd_t = @splat(0),
     events: [max_events]Event = undefined,
+    pinned: bool = false,
 
-    pub fn add_many(this: *@This(), events: []const Event) !void {
-        for (events) |e| {
-            try this.add(e);
-        }
+    pub fn init(pinned: bool, events: []const Event) @This() {
+        var this: @This() = .{ .nevents = events.len, .pinned = pinned };
+        std.mem.copyForwards(Event, &this.events, events);
+        return this;
     }
 
-    pub fn add(this: *@This(), evt: Event) !void {
-        if (this.nevents == max_events) return error.TooManyEvents;
-        this.events[this.nevents] = evt;
-        this.nevents += 1;
-    }
-
-    pub fn install(this: *@This()) !void {
+    pub fn open(this: *@This()) !void {
         std.debug.assert(this.fds[0] == 0);
         if (this.nevents == 0) return;
-
-        errdefer this.uninstall();
+        errdefer this.close();
 
         const format = PERF_FORMAT.GROUP |
             PERF_FORMAT.TOTAL_TIME_ENABLED |
@@ -93,11 +102,11 @@ pub const PerfEvent = struct {
             .config = this.events[0].config,
             .flags = .{
                 .disabled = true,
-                .pinned = true,
                 .exclude_kernel = true,
                 .exclude_hv = true,
                 .use_clockid = true,
                 .inherit = false,
+                .pinned = this.pinned,
             },
             .clockid = .MONOTONIC_RAW,
             .read_format = format,
@@ -113,6 +122,7 @@ pub const PerfEvent = struct {
                     .exclude_hv = true,
                     .use_clockid = true,
                     .inherit = false,
+                    .pinned = this.pinned,
                 },
                 .clockid = .MONOTONIC_RAW,
             };
@@ -121,23 +131,18 @@ pub const PerfEvent = struct {
         try this.reset();
     }
 
-    pub fn uninstall(this: *@This()) void {
+    pub fn close(this: *@This()) void {
         this.disable() catch {};
         for (0..this.nevents) |i| {
             if (this.fds[i] != 0) {
-                close(this.fds[i]) catch {};
+                close_os(this.fds[i]) catch {};
                 this.fds[i] = 0;
             }
         }
     }
 
-    pub fn reinstall(this: *@This()) !void {
-        this.uninstall();
-        try this.install();
-    }
-
     pub fn deinit(this: *@This()) void {
-        this.uninstall();
+        this.close();
     }
 
     pub fn enable(this: *const @This()) !void {
@@ -170,21 +175,76 @@ const PERF_FORMAT = struct {
     pub const LOST: u64 = 1 << 4;
 };
 
-fn ioctl(fd: system.fd_t, request: u32, args: usize) !usize {
+fn ioctl(fd: fd_t, request: u32, args: usize) errno.errno!usize {
     const rc = std.os.linux.ioctl(fd, request, args);
-    switch (std.os.linux.errno(rc)) {
-        .SUCCESS => return @intCast(rc),
-        else => |err| return std.posix.unexpectedErrno(err),
-    }
+    return @intCast(try errno.chkerr(rc));
 }
 
-fn close(fd: system.fd_t) !void {
-    const rc = std.os.linux.close(fd);
-    switch (std.os.linux.errno(rc)) {
-        .SUCCESS => return,
-        else => |err| return std.posix.unexpectedErrno(err),
-    }
+fn perf_event_open(
+    attr: *sys.perf_event_attr,
+    pid: pid_t,
+    cpu: i32,
+    group: fd_t,
+    flags: usize,
+) errno.errno!fd_t {
+    const rc = sys.perf_event_open(attr, pid, cpu, group, flags);
+    return @intCast(try errno.chkerr(rc));
 }
+
+fn close_os(fd: fd_t) errno.errno!void {
+    const rc = std.os.linux.close(fd);
+    _ = try errno.chkerr(rc);
+}
+
+pub const PerfSuite = struct {
+    const This = @This();
+
+    pinned: bool,
+    probes: ArrayList(PerfProbe),
+
+    pub fn init(alloc: Allocator, pinned: bool) @This() {
+        return .{ .pinned = pinned, .probes = .init(alloc) };
+    }
+
+    pub fn deinit(this: *@This()) void {
+        this.probes.deinit();
+    }
+
+    pub fn add(this: *@This(), events: []const Event) !void {
+        try this.probes.append(.init(this.pinned, events));
+    }
+
+    pub fn open(this: *@This()) !void {
+        for (this.probes.items) |*p| try p.open();
+    }
+
+    pub fn close(this: *@This()) !void {
+        for (this.probes.items) |*p| p.close();
+    }
+
+    pub fn enable(this: *@This()) !void {
+        for (this.probes.items) |*p| try p.enable();
+    }
+
+    pub fn disable(this: *@This()) !void {
+        for (this.probes.items) |*p| try p.disable();
+    }
+
+    pub fn reset(this: *@This()) !void {
+        for (this.probes.items) |*p| try p.reset();
+    }
+
+    pub fn read(this: *const @This(), i: usize, sample: *Sample) !void {
+        try this.probes.items[i].read(sample);
+    }
+};
+
+// -----------
+// TEST
+// -----------
+
+const tt = std.testing;
+const now = @import("time.zig").now;
 
 fn workload(reps: u64) void {
     const dno = std.mem.doNotOptimizeAway;
@@ -195,41 +255,32 @@ fn workload(reps: u64) void {
     }
 }
 
-const tt = std.testing;
-const now = @import("time.zig").now;
-
 test {
-    const events = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
-    var stats: PerfEvent = .{};
-    try stats.add_many(&events);
-    try stats.install();
-    try stats.enable();
+    const events0 = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
+    const events1 = [_]Event{ .l1d_read, .l1d_read_miss, .ll_read, .ll_read_miss };
+    const events2 = [_]Event{ .l1d_write, .ll_write, .ll_write_miss };
+
+    var ps: PerfSuite = .init(tt.allocator, false);
+    try ps.add(&events0);
+    try ps.add(&events1);
+    try ps.add(&events2);
+
+    try ps.open();
+    try ps.enable();
     workload(1_000_000);
-    try stats.disable();
+    try ps.disable();
 
-    {
-        var samp: Sample = .{};
-        try stats.read(&samp);
-        const e = samp.events();
-        std.debug.print("{any}\n{any}\n", .{ samp, e });
-    }
+    var samp: Sample = .{};
+    try ps.read(0, &samp);
+    std.debug.print("{any}\n", .{samp});
 
-    try stats.reset();
-    {
-        var samp: Sample = .{};
-        try stats.read(&samp);
-        const e = samp.events();
-        std.debug.print("{any}\n{any}\n", .{ samp, e });
-    }
+    samp.clear();
+    try ps.read(1, &samp);
+    std.debug.print("{any}\n", .{samp});
 
-    try stats.enable();
-    workload(1_000_000);
-    try stats.disable();
+    samp.clear();
+    try ps.read(2, &samp);
+    std.debug.print("{any}\n", .{samp});
 
-    {
-        var samp: Sample = .{};
-        try stats.read(&samp);
-        const e = samp.events();
-        std.debug.print("{any}\n{any}\n", .{ samp, e });
-    }
+    ps.deinit();
 }

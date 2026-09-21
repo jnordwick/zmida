@@ -117,82 +117,82 @@ pub fn text_thruput(
     try writer.flush();
     try writer.writeByte('\n');
     try writer.writeByte('\n');
-    if (opts.with_perf) try text_perf(writer, trials, opts);
+    //    if (opts.with_perf) try text_perf(writer, trials, opts);
 }
 
-pub fn text_perf(
-    writer: *std.Io.Writer,
-    trials: []const root.TrialStats,
-    opts: root.TextOpts,
-) !void {
-    var max_name_len: usize = "fn".len;
-    for (trials) |t| {
-        max_name_len = @max(max_name_len, t.trial.name.len);
-    }
-    const vbar, const hbar, const plus =
-        if (opts.ascii) .{ "|", "-", "+" } else .{ "\u{2502}", "\u{2500}", "\u{253c}" };
+// pub fn text_perf(
+//     writer: *std.Io.Writer,
+//     trials: []const root.TrialStats,
+//     opts: root.TextOpts,
+// ) !void {
+//     var max_name_len: usize = "fn".len;
+//     for (trials) |t| {
+//         max_name_len = @max(max_name_len, t.trial.name.len);
+//     }
+//     const vbar, const hbar, const plus =
+//         if (opts.ascii) .{ "|", "-", "+" } else .{ "\u{2502}", "\u{2500}", "\u{253c}" };
 
-    try writer.print(
-        "{[name]s: <[max_name_len]} {[vbar]s}" ++
-            "{[ipc]s: >7} " ++
-            "{[inst]s: >10} " ++
-            "{[cyc]s: >10} " ++
-            "{[imiss]s: >8} {[vbar]s}" ++
-            "{[brmrt]s: >8} " ++
-            "{[brmiss]s: >10} " ++
-            "{[brtot]s: >10}\n",
-        .{
-            .name = "fn",
-            .max_name_len = max_name_len + 1,
-            .ipc = "ipc",
-            .inst = "insts",
-            .imiss = "imiss",
-            .cyc = "cycles",
-            .brmrt = "miss/M",
-            .brmiss = "misses",
-            .brtot = "branches",
-            .vbar = vbar,
-        },
-    );
+//     try writer.print(
+//         "{[name]s: <[max_name_len]} {[vbar]s}" ++
+//             "{[ipc]s: >7} " ++
+//             "{[inst]s: >10} " ++
+//             "{[cyc]s: >10} " ++
+//             "{[imiss]s: >8} {[vbar]s}" ++
+//             "{[brmrt]s: >8} " ++
+//             "{[brmiss]s: >10} " ++
+//             "{[brtot]s: >10}\n",
+//         .{
+//             .name = "fn",
+//             .max_name_len = max_name_len + 1,
+//             .ipc = "ipc",
+//             .inst = "insts",
+//             .imiss = "imiss",
+//             .cyc = "cycles",
+//             .brmrt = "miss/M",
+//             .brmiss = "misses",
+//             .brtot = "branches",
+//             .vbar = vbar,
+//         },
+//     );
 
-    var separator_len = max_name_len + 2;
-    try write_n(writer, hbar, separator_len);
-    try write_n(writer, plus, 1);
-    separator_len = 1 + 2 * 8 + 2 * 11;
-    try write_n(writer, hbar, separator_len);
-    try write_n(writer, plus, 1);
-    separator_len = 8 + 2 * 11;
-    try write_n(writer, hbar, separator_len);
-    try writer.writeByte('\n');
+//     var separator_len = max_name_len + 2;
+//     try write_n(writer, hbar, separator_len);
+//     try write_n(writer, plus, 1);
+//     separator_len = 1 + 2 * 8 + 2 * 11;
+//     try write_n(writer, hbar, separator_len);
+//     try write_n(writer, plus, 1);
+//     separator_len = 8 + 2 * 11;
+//     try write_n(writer, hbar, separator_len);
+//     try writer.writeByte('\n');
 
-    for (trials) |stats| {
-        const ipc = float_div(f64, stats.perf_instructions, stats.perf_cpu_cycles);
-        const brmsrt = 1e6 * float_div(f64, stats.perf_branch_miss, stats.perf_branch_total);
-        try writer.print(
-            "{[name]s: <[max_name_len]} {[vbar]s}" ++
-                "{[ipc]d: >7.3} " ++
-                "{[inst]d: >10.1} " ++
-                "{[cyc]d: >10.1} " ++
-                "{[imiss]d: >8.3} {[vbar]s}" ++
-                "{[brmsrt]d: >8.2} " ++
-                "{[brmiss]d: >10.3} " ++
-                "{[brtot]d: >10.1}\n",
-            .{
-                .name = stats.trial.name,
-                .max_name_len = max_name_len + 1,
-                .ipc = ipc,
-                .inst = float_div(f64, stats.perf_instructions, stats.trial_calls),
-                .imiss = float_div(f64, stats.perf_imiss_total, stats.trial_calls),
-                .cyc = float_div(f64, stats.perf_cpu_cycles, stats.trial_calls),
-                .brmsrt = brmsrt,
-                .brmiss = float_div(f64, stats.perf_branch_miss, stats.trial_calls),
-                .brtot = float_div(f64, stats.perf_branch_total, stats.trial_calls),
-                .vbar = vbar,
-            },
-        );
-    }
-    try writer.flush();
-}
+//     for (trials) |stats| {
+//         const ipc = float_div(f64, stats.perf_instructions, stats.perf_cpu_cycles);
+//         const brmsrt = 1e6 * float_div(f64, stats.perf_branch_miss, stats.perf_branch_total);
+//         try writer.print(
+//             "{[name]s: <[max_name_len]} {[vbar]s}" ++
+//                 "{[ipc]d: >7.3} " ++
+//                 "{[inst]d: >10.1} " ++
+//                 "{[cyc]d: >10.1} " ++
+//                 "{[imiss]d: >8.3} {[vbar]s}" ++
+//                 "{[brmsrt]d: >8.2} " ++
+//                 "{[brmiss]d: >10.3} " ++
+//                 "{[brtot]d: >10.1}\n",
+//             .{
+//                 .name = stats.trial.name,
+//                 .max_name_len = max_name_len + 1,
+//                 .ipc = ipc,
+//                 .inst = float_div(f64, stats.perf_instructions, stats.trial_calls),
+//                 .imiss = float_div(f64, stats.perf_imiss_total, stats.trial_calls),
+//                 .cyc = float_div(f64, stats.perf_cpu_cycles, stats.trial_calls),
+//                 .brmsrt = brmsrt,
+//                 .brmiss = float_div(f64, stats.perf_branch_miss, stats.trial_calls),
+//                 .brtot = float_div(f64, stats.perf_branch_total, stats.trial_calls),
+//                 .vbar = vbar,
+//             },
+//         );
+//     }
+//     try writer.flush();
+// }
 
 pub fn text_latency(
     writer: *std.Io.Writer,
@@ -291,7 +291,7 @@ pub fn text_latency(
     try writer.flush();
     try writer.writeByte('\n');
     try writer.writeByte('\n');
-    try if (opts.with_perf) text_perf(writer, trials, opts);
+    //    try if (opts.with_perf) text_perf(writer, trials, opts);
 }
 
 pub fn csv_summary(
@@ -312,11 +312,11 @@ pub fn csv_summary(
         }
 
         // perf header
-        if (opts.with_perf) {
-            try writer.print("{[0]c}perf_enable{[0]c}perf_running" ++
-                "{[0]c}perf_cpucycles{[0]c}perf_inst{[0]c}erf_branchmiss" ++
-                "{[0]c}perf_branches{[0]c}perf_imiss", .{opts.separator});
-        }
+        // if (opts.with_perf) {
+        //     try writer.print("{[0]c}perf_enable{[0]c}perf_running" ++
+        //         "{[0]c}perf_cpucycles{[0]c}perf_inst{[0]c}erf_branchmiss" ++
+        //         "{[0]c}perf_branches{[0]c}perf_imiss", .{opts.separator});
+        // }
         try writer.writeByte('\n');
     }
 
@@ -338,23 +338,23 @@ pub fn csv_summary(
                 .sep = opts.separator,
             });
         }
-        if (opts.with_perf) {
-            try writer.print(
-                "{[s]c}{[enabled]d}{[s]c}{[running]d}{[s]c}" ++
-                    "{[cpucycles]d}{[s]c}{[inst]d}{[s]c}{[brmiss]d}" ++
-                    "{[s]c}{[branches]d}{[s]c}{[imiss]d}",
-                .{
-                    .s = opts.separator,
-                    .enabled = t.perf_time_enabled,
-                    .running = t.perf_time_running,
-                    .cpucycles = t.perf_cpu_cycles,
-                    .inst = t.perf_instructions,
-                    .brmiss = t.perf_branch_miss,
-                    .branches = t.perf_branch_total,
-                    .imiss = t.perf_imiss_total,
-                },
-            );
-        }
+        // if (opts.with_perf) {
+        //     try writer.print(
+        //         "{[s]c}{[enabled]d}{[s]c}{[running]d}{[s]c}" ++
+        //             "{[cpucycles]d}{[s]c}{[inst]d}{[s]c}{[brmiss]d}" ++
+        //             "{[s]c}{[branches]d}{[s]c}{[imiss]d}",
+        //         .{
+        //             .s = opts.separator,
+        //             .enabled = t.perf_time_enabled,
+        //             .running = t.perf_time_running,
+        //             .cpucycles = t.perf_cpu_cycles,
+        //             .inst = t.perf_instructions,
+        //             .brmiss = t.perf_branch_miss,
+        //             .branches = t.perf_branch_total,
+        //             .imiss = t.perf_imiss_total,
+        //         },
+        //     );
+        // }
         try writer.writeByte('\n');
     }
     try writer.flush();

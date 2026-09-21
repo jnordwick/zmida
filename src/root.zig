@@ -1,11 +1,11 @@
 const std = @import("std");
+const perf = @import("perf.zig");
 const ArrayList = std.array_list.Managed;
 const ArgsTuple = std.meta.ArgsTuple;
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 
 pub const out = @import("out.zig");
-const perf = @import("perf.zig");
 const runners = @import("runners.zig");
 pub const stats = @import("stats.zig");
 pub const TrialStats = stats.TrialStats;
@@ -20,7 +20,7 @@ pub const GlobalOpts = struct {
     debug_warn: bool = true,
     verbose: u32 = 1,
     use_tsc: bool = false,
-    perf: bool = true,
+    disable_perf: bool = true,
 };
 
 pub var gopts = GlobalOpts{};
@@ -52,12 +52,14 @@ pub const CountConfig = struct {
     warmup_calls: u32 = 5_000,
     trial_samples: u32 = 10_000,
     sample_calls: u32 = 1_000,
+    perf_calls: u32 = 1_000_000,
 };
 
 pub const TimedConfig = struct {
     warmup_millis: u32 = 100,
     trial_samples: u32 = 250,
     trial_millis: u32 = 2_500,
+    perf_millis: u32 = 500,
 };
 
 pub const Config = union(enum) {
@@ -91,7 +93,6 @@ pub const SummaryOpts = struct {
 pub const SamplesOpts = struct {
     format: enum { csv } = .csv,
     separator: u8 = ',',
-    with_perf: bool = true,
 };
 
 pub const GnuplotOpts = struct {
@@ -101,7 +102,6 @@ pub const GnuplotOpts = struct {
 pub const Env = struct {
     alloc: Allocator,
     io: Io,
-    perf: ?*perf.PerfEvent = null,
 };
 
 pub const Study = struct {
@@ -117,10 +117,6 @@ pub const Study = struct {
         }
         this.trials.deinit();
         this.stats.deinit();
-        if (this.env.perf) |p| {
-            p.deinit();
-            this.env.alloc.destroy(p);
-        }
     }
 
     pub fn run(alloc: Allocator, io: Io, name: ?[]const u8, config: Config, funcs: anytype, args: anytype) !Study {
@@ -132,15 +128,6 @@ pub const Study = struct {
             .trials = .init(alloc),
             .stats = .init(alloc),
         };
-        if (gopts.perf) {
-            const events = [_]perf.Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
-            verbose(1, "Installing performance counters\n", .{});
-            const p = try this.env.alloc.create(perf.PerfEvent);
-            p.* = .{};
-            try p.add_many(&events);
-            try p.install();
-            this.env.perf = p;
-        }
         verbose(1, "Running study {s}\n", this.name);
         verbose(1, "{s}: {any}\n", .{ @typeName(@TypeOf(config)), config });
         inline for (0..funcs.len) |i| {
@@ -187,8 +174,7 @@ pub const Study = struct {
     }
 
     pub fn write_text(this: *@This(), fname: ?[]const u8, topts: TextOpts) !void {
-        var opts = topts;
-        opts.with_perf &= this.env.perf != null;
+        const opts = topts;
         try this.statistics();
         const file = try util.get_file(this.env, fname, ".txt");
         defer if (fname != null) file.close(this.env.io);
@@ -201,8 +187,7 @@ pub const Study = struct {
     }
 
     pub fn write_summary(this: *@This(), fname: ?[]const u8, sopts: SummaryOpts) !void {
-        var opts = sopts;
-        opts.with_perf &= this.env.perf != null;
+        const opts = sopts;
         try this.statistics();
         const file = try util.get_file(this.env, fname, "-summary.csv");
         defer if (fname != null) file.close(this.env.io);
@@ -211,8 +196,7 @@ pub const Study = struct {
     }
 
     pub fn write_samples(this: *@This(), fname: ?[]const u8, sopts: SamplesOpts) !void {
-        var opts = sopts;
-        opts.with_perf &= this.end.perf != null;
+        const opts = sopts;
         try this.statistics();
         const file = try util.get_file(this.env, fname, "-samples.csv");
         defer if (fname != null) file.close(this.env.io);
@@ -235,14 +219,23 @@ pub const Sample = struct {
     ord: u64 = 0,
     calls: u64 = 0,
     nanos: f64 = 0,
-    cpu_perf: CpuCounters = .{},
 };
 
-pub const CpuCounters = struct {
+pub const PerfSample = struct {
+    ord: u64 = 0,
+    calls: u64 = 0,
+
+    cpu: CpuCounters = .{},
+    memr: MemReadCounters = .{},
+    memw: MemWriteCounters = .{},
+};
+
+pub const CpuCounters = extern struct {
+    const events = [_]perf.Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
     time_enabled: u64 = 0,
     time_running: u64 = 0,
-    cpu_cycles: u64 = 0,
     instructions: u64 = 0,
+    cpu_cycles: u64 = 0,
     branch_miss: u64 = 0,
     branch_total: u64 = 0,
     l1i_read_miss: u64 = 0,
@@ -256,6 +249,46 @@ pub const CpuCounters = struct {
             .branch_miss = ps.records[2],
             .branch_total = ps.records[3],
             .l1i_read_miss = ps.records[4],
+        };
+    }
+};
+
+pub const MemReadCounters = struct {
+    const events = [_]perf.Event{ .l1d_read, .l1d_read_miss, .ll_read, .ll_read_miss };
+    time_enabled: u64 = 0,
+    time_running: u64 = 0,
+    l1d_read: u64 = 0,
+    l1d_read_miss: u64 = 0,
+    ll_read: u64 = 0,
+    ll_read_miss: u64 = 0,
+
+    pub fn init(ps: *const perf.Sample) CpuCounters {
+        return .{
+            .time_enabled = ps.enabled,
+            .time_running = ps.running,
+            .l1d_read = ps.record[0],
+            .l1d_read_miss = ps.record[1],
+            .ll_read = ps.record[2],
+            .ll_read_miss = ps.record[3],
+        };
+    }
+};
+
+pub const MemWriteCounters = struct {
+    const events = [_]perf.Event{ .l1d_write, .ll_write, .ll_write_miss };
+    time_enabled: u64 = 0,
+    time_running: u64 = 0,
+    l1d_write: u64 = 0,
+    ll_write: u64 = 0,
+    ll_write_miss: u64 = 0,
+
+    pub fn init(ps: *const perf.Sample) CpuCounters {
+        return .{
+            .time_enabled = ps.enabled,
+            .time_running = ps.running,
+            .l1d_write = ps.record[0],
+            .ll_write = ps.record[1],
+            .ll_write_miss = ps.record[2],
         };
     }
 };
