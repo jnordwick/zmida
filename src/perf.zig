@@ -122,7 +122,6 @@ pub const PerfProbe = struct {
                     .exclude_hv = true,
                     .use_clockid = true,
                     .inherit = false,
-                    .pinned = this.pinned,
                 },
                 .clockid = .MONOTONIC_RAW,
             };
@@ -160,8 +159,7 @@ pub const PerfProbe = struct {
         _ = try ioctl(this.fds[0], PERF.EVENT_IOC.RESET, PERF_IOC_FLAG_GROUP);
     }
 
-    pub fn read(this: *const @This(), sample: *Sample) !void {
-        const buf = sample.buffer(this.nevents);
+    pub fn read(this: *const @This(), buf: []u8) !void {
         const r = try std.posix.read(this.fds[0], buf);
         std.debug.assert(r == buf.len);
     }
@@ -196,7 +194,7 @@ fn close_os(fd: fd_t) errno.errno!void {
     _ = try errno.chkerr(rc);
 }
 
-pub const PerfSuite = struct {
+pub const PerfPanel = struct {
     const This = @This();
 
     pinned: bool,
@@ -234,8 +232,12 @@ pub const PerfSuite = struct {
         for (this.probes.items) |*p| try p.reset();
     }
 
-    pub fn read(this: *const @This(), i: usize, sample: *Sample) !void {
-        try this.probes.items[i].read(sample);
+    pub fn nevents(this: *const @This(), i: usize) usize {
+        return this.probes.items[i].nevents;
+    }
+
+    pub fn read(this: *const @This(), i: usize, buf: []u8) !void {
+        try this.probes.items[i].read(buf);
     }
 };
 
@@ -260,7 +262,7 @@ test {
     const events1 = [_]Event{ .l1d_read, .l1d_read_miss, .ll_read, .ll_read_miss };
     const events2 = [_]Event{ .l1d_write, .ll_write, .ll_write_miss };
 
-    var ps: PerfSuite = .init(tt.allocator, false);
+    var ps: PerfPanel = .init(tt.allocator, false);
     try ps.add(&events0);
     try ps.add(&events1);
     try ps.add(&events2);
@@ -271,15 +273,15 @@ test {
     try ps.disable();
 
     var samp: Sample = .{};
-    try ps.read(0, &samp);
+    try ps.read(0, samp.buffer(ps.nevents(0)));
     std.debug.print("{any}\n", .{samp});
 
     samp.clear();
-    try ps.read(1, &samp);
+    try ps.read(1, samp.buffer(ps.nevents(1)));
     std.debug.print("{any}\n", .{samp});
 
     samp.clear();
-    try ps.read(2, &samp);
+    try ps.read(2, samp.buffer(ps.nevents(2)));
     std.debug.print("{any}\n", .{samp});
 
     ps.deinit();

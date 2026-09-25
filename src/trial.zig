@@ -2,11 +2,17 @@ const std = @import("std");
 const root = @import("root.zig");
 const util = @import("util.zig");
 const runners = @import("runners.zig");
+const perf = @import("perf.zig");
+const PerfPanel = perf.PerfPanel;
 const Sample = root.Sample;
+const PerfSample = root.PerfSample;
+const PerfTrial = root.PerfTrial;
 const Env = root.Env;
 const TrialStats = root.TrialStats;
 const dno = std.mem.doNotOptimizeAway;
 const ArrayList = std.array_list.Managed;
+const Allocator = std.mem.Allocator;
+const PerfLevel = root.PerfLevel;
 
 // Definitions are the actual parameters for a trial.
 // these are concrete and what are the repeatable pieces.
@@ -18,12 +24,16 @@ pub const CountDef = struct {
     warmup_sweeps: u64,
     trial_samples: u64,
     sample_sweeps: u64,
+    perf_sweeps: u64,
+    perf_level: PerfLevel,
 };
 
 pub const TimedDef = struct {
     warmup_nanos: u64,
     trial_samples: u64,
     sample_nanos: u64,
+    perf_nanos: u64,
+    perf_level: PerfLevel,
 };
 
 pub const TrialDef = union(enum) {
@@ -46,6 +56,7 @@ pub const ArgsType = enum {
 pub const Trial = struct {
     name: []const u8,
     data: ArrayList(Sample),
+    perf: PerfSample,
     env: Env,
     def: TrialDef,
     calls_per_sweep: u64 = 0, // calls per sweep, args.len
@@ -56,6 +67,7 @@ pub const Trial = struct {
             .def = def,
             .name = name,
             .data = .init(env.alloc),
+            .perf = .{},
         };
     }
 
@@ -65,63 +77,12 @@ pub const Trial = struct {
 
     pub fn run(this: *@This(), func: anytype, args: anytype) !void {
         switch (this.def) {
-            .count => try this.bycount(func, args),
-            .timed => try this.bytimed(func, args),
+            .count => try this.timebycount(func, args),
+            .timed => try this.timebytimed(func, args),
         }
     }
 
-    // pub fn perf_bycount(this: *@This(), func: anytype, args: anytype) !void {
-    //     const argstype = util.argstype_of(@TypeOf(args));
-    //     try this.data.ensureTotalCapacity(this.def.count.trial_samples);
-    //     this.data.clearRetainingCapacity();
-    //     this.calls_per_sweep = util.argslen(args);
-
-    //     root.verbose(1, "  Trial {s} with {d} samples @ {d} calls/sample", .{
-    //         this.name,
-    //         this.def.count.trial_samples,
-    //         this.def.count.sample_sweeps * this.calls_per_sweep,
-    //     });
-
-    //     // warmup
-    //     if (this.env.perf) |e| try e.enable();
-    //     dno(try runners.count_sample(
-    //         argstype,
-    //         this.env,
-    //         this.def.count.warmup_sweeps,
-    //         func,
-    //         args,
-    //     ));
-
-    //     // reinstall to clear time counters
-    //     if (this.env.perf) |e| try e.reinstall();
-    //     for (0..this.def.count.trial_samples) |i| {
-    //         root.verbose(2, " {d}", i + 1);
-    //         var res = try runners.count_sample(
-    //             argstype,
-    //             this.env,
-    //             this.def.count.sample_sweeps,
-    //             func,
-    //             args,
-    //         );
-    //         res.ord = i;
-    //         try this.data.append(res);
-    //     }
-    //     root.verbose(1, "\n", .{});
-
-    //     if (this.env.perf) |_| {
-    //         // adjust cumulative cpu times back to individual
-    //         const tdlen = this.data.items.len;
-    //         for (1..tdlen) |i| {
-    //             this.data.items[tdlen - i].cpu_perf.time_enabled -=
-    //                 this.data.items[tdlen - i - 1].cpu_perf.time_enabled;
-
-    //             this.data.items[tdlen - i].cpu_perf.time_running -=
-    //                 this.data.items[tdlen - i - 1].cpu_perf.time_running;
-    //         }
-    //     }
-    // }
-
-    pub fn bycount(this: *@This(), func: anytype, args: anytype) !void {
+    pub fn perfbycount(this: *@This(), func: anytype, args: anytype) !void {
         const argstype = util.argstype_of(@TypeOf(args));
         try this.data.ensureTotalCapacity(this.def.count.trial_samples);
         this.data.clearRetainingCapacity();
@@ -137,17 +98,18 @@ pub const Trial = struct {
         dno(try runners.count_sample(
             argstype,
             this.env,
+            null,
             this.def.count.warmup_sweeps,
             func,
             args,
         ));
 
-        // reinstall to clear time counters
         for (0..this.def.count.trial_samples) |i| {
             root.verbose(2, " {d}", i + 1);
             var res = try runners.count_sample(
                 argstype,
                 this.env,
+                null,
                 this.def.count.sample_sweeps,
                 func,
                 args,
@@ -158,7 +120,67 @@ pub const Trial = struct {
         root.verbose(1, "\n", .{});
     }
 
-    pub fn bytimed(this: *@This(), func: anytype, args: anytype) !void {
+    pub fn timebycount(this: *@This(), func: anytype, args: anytype) !void {
+        const argstype = util.argstype_of(@TypeOf(args));
+        try this.data.ensureTotalCapacity(this.def.count.trial_samples);
+        this.data.clearRetainingCapacity();
+        this.calls_per_sweep = util.argslen(args);
+
+        root.verbose(1, "  Trial {s} with {d} samples @ {d} calls/sample", .{
+            this.name,
+            this.def.count.trial_samples,
+            this.def.count.sample_sweeps * this.calls_per_sweep,
+        });
+
+        // warmup
+        dno(try runners.count_sample(
+            argstype,
+            this.env,
+            null,
+            this.def.count.warmup_sweeps,
+            func,
+            args,
+        ));
+
+        // timed
+        for (0..this.def.count.trial_samples) |i| {
+            root.verbose(2, " {d}", i + 1);
+            var res = try runners.count_sample(
+                argstype,
+                this.env,
+                null,
+                this.def.count.sample_sweeps,
+                func,
+                args,
+            );
+            res.ord = i;
+            try this.data.append(res);
+        }
+        root.verbose(1, "\n", .{});
+
+        // perf
+        if (this.def.count.perf_level.cpu) {
+            root.verbose(
+                1,
+                "Trials {s} cpu perf_events. {d} sweeps\n",
+                .{ this.name, this.def.count.perf_sweeps },
+            );
+            var panel = try make_cpu_panel(this.env.alloc);
+            var res = try runners.count_sample(
+                argstype,
+                this.env,
+                &panel,
+                this.def.count.perf_sweeps,
+                func,
+                args,
+            );
+            res.ord = 0;
+            try panel.read(0, this.perf.cpu.as_payload());
+            panel.deinit();
+        }
+    }
+
+    pub fn timebytimed(this: *@This(), func: anytype, args: anytype) !void {
         const argstype = util.argstype_of(@TypeOf(args));
         try this.data.ensureTotalCapacity(this.def.timed.trial_samples);
         this.data.clearRetainingCapacity();
@@ -174,17 +196,18 @@ pub const Trial = struct {
         dno(try runners.timed_sample(
             argstype,
             this.env,
+            null,
             this.def.timed.warmup_nanos,
             func,
             args,
         ));
 
-        // reinstall to clear time counters
         for (0..this.def.timed.trial_samples) |i| {
             root.verbose(2, " {d}", i + 1);
             var res = try runners.timed_sample(
                 argstype,
                 this.env,
+                null,
                 this.def.timed.sample_nanos,
                 func,
                 args,
@@ -199,6 +222,19 @@ pub const Trial = struct {
         return .init(env.alloc, this);
     }
 };
+
+fn make_cpu_panel(alloc: Allocator) !PerfPanel {
+    var panel: PerfPanel = .init(alloc, true);
+    try panel.add(&root.CpuCounters.events);
+    return panel;
+}
+
+fn make_mem_panel(alloc: Allocator) !PerfPanel {
+    var panel: PerfPanel = .init(alloc, false);
+    try panel.add(&root.MemReadCounters.events);
+    try panel.add(&root.MemWriteCounters.events);
+    return panel;
+}
 
 test {
     _ = std.testing.refAllDecls(@This());

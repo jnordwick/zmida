@@ -11,8 +11,15 @@ const Sample = root.Sample;
 const MemSample = root.MemSample;
 const time = @import("time.zig");
 const Timer = time.Timer;
+const perf = @import("perf.zig");
+const PerfPanel = perf.PerfPanel;
+const Event = perf.Event;
 
 const AtomicBool = std.atomic.Value(bool);
+
+const events_cpu = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
+const events_memr = [_]Event{ .l1d_read, .l1d_read_miss, .ll_read, .ll_read_miss };
+const events_memw = [_]Event{ .l1d_write, .ll_write, .ll_write_miss };
 
 inline fn call(func: anytype, arg: anytype) void {
     dno(&arg);
@@ -45,18 +52,35 @@ inline fn sweep(comptime argstype: ArgsType, func: anytype, args: anytype) void 
 // Count Based
 // -----------
 
-inline fn count_loop(comptime argstype: ArgsType, sweeps: u64, func: anytype, args: anytype) void {
+inline fn count_loop(
+    comptime argstype: ArgsType,
+    sweeps: u64,
+    func: anytype,
+    args: anytype,
+) void {
     for (0..sweeps) |_| {
         sweep(argstype, func, args);
     }
 }
 
-pub fn count_sample(comptime argstype: ArgsType, _: Env, sweeps: u64, func: anytype, args: anytype) !Sample {
+pub fn count_sample(
+    comptime argstype: ArgsType,
+    _: Env,
+    panel: ?*PerfPanel,
+    sweeps: u64,
+    func: anytype,
+    args: anytype,
+) !Sample {
     var sample: Sample = .{};
     var timer: Timer = undefined;
+    if (panel) |p| {
+        try p.open();
+        try p.enable();
+    }
     timer.start();
     count_loop(argstype, sweeps, func, args);
     timer.stop();
+    if (panel) |p| try p.disable();
     sample.calls = sweeps * util.argslen(args);
     sample.nanos = timer.nanos();
     return sample;
@@ -66,7 +90,12 @@ pub fn count_sample(comptime argstype: ArgsType, _: Env, sweeps: u64, func: anyt
 // Timed Based
 // -----------
 
-inline fn timed_loop(comptime argstype: ArgsType, done: *AtomicBool, func: anytype, args: anytype) u64 {
+inline fn timed_loop(
+    comptime argstype: ArgsType,
+    done: *AtomicBool,
+    func: anytype,
+    args: anytype,
+) u64 {
     var sweeps: u64 = 0;
     while (!done.load(.acquire)) {
         sweep(argstype, func, args);
@@ -83,7 +112,14 @@ pub fn set_bool(start: *AtomicBool, stop: *AtomicBool, nanos: u64) void {
     stop.store(true, .release);
 }
 
-pub fn timed_sample(comptime argstype: ArgsType, _: Env, nanos: u64, func: anytype, args: anytype) !Sample {
+pub fn timed_sample(
+    comptime argstype: ArgsType,
+    _: Env,
+    panel: ?*PerfPanel,
+    nanos: u64,
+    func: anytype,
+    args: anytype,
+) !Sample {
     var sample: Sample = .{};
     var start: AtomicBool = .init(false);
     var done: AtomicBool = .init(false);
@@ -93,10 +129,15 @@ pub fn timed_sample(comptime argstype: ArgsType, _: Env, nanos: u64, func: anyty
         .{ &start, &done, nanos },
     ) catch @panic("could not spawn");
     var timer: Timer = undefined;
+    if (panel) |p| {
+        try p.open();
+        try p.enable();
+    }
     start.store(true, .release);
     timer.start();
     const sweeps = timed_loop(argstype, &done, func, args);
     timer.stop();
+    if (panel) |p| try p.disable();
     timer_thread.join();
     sample.calls = sweeps * util.argslen(args);
     sample.nanos = timer.nanos();
@@ -135,7 +176,13 @@ test "count_sample slice naked" {
 test "count_sample single tuple" {
     const env = Env{ .alloc = tt.allocator, .io = tt.io };
     const arg: f64 = 0.6;
-    const t = try count_sample(.single_tuple, env, 30, std.math.sin, .{arg});
+    const t = try count_sample(
+        .single_tuple,
+        env,
+        30,
+        std.math.sin,
+        .{arg},
+    );
     try tt.expect(t.calls == 30);
 }
 
@@ -169,7 +216,13 @@ test "count_sample generator" {
 
     const env = Env{ .alloc = tt.allocator, .io = tt.io };
     const arg: test_gen = .init(0, 10, 2);
-    const t = try count_sample(.generator, env, 5, std.math.sin, arg);
+    const t = try count_sample(
+        .generator,
+        env,
+        5,
+        std.math.sin,
+        arg,
+    );
     try tt.expect(t.calls == 25);
 }
 
@@ -235,7 +288,13 @@ test "timed_sample nil" {
 test "timed_sample single tuple" {
     const env = Env{ .alloc = tt.allocator, .io = tt.io };
     const arg: f64 = 0.6;
-    const t = try timed_sample(.single_tuple, env, 5 * 1e6, std.math.sin, .{arg});
+    const t = try timed_sample(
+        .single_tuple,
+        env,
+        5 * 1e6,
+        std.math.sin,
+        .{arg},
+    );
     try tt.expect(t.calls > 100); // prob much more
 }
 

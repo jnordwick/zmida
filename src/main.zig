@@ -12,7 +12,7 @@ pub fn main(init: std.process.Init) !void {
     //const xx_slice: []f64 = @ptrCast(&xx);
     const funcs = .{ tgamma, lgamma, tgamma, lgamma };
 
-    zm.set_global_opts(.{ .verbose = 1, .use_tsc = true });
+    zm.set_global_opts(.{ .verbose = 1, .use_tsc = true, .perf_level = .{ .cpu = true } });
     const config: zm.Config = .bycount(.{});
     var study = try zm.Study.run(init.gpa, init.io, null, config, funcs, &xx);
     try study.write_text(null, .{});

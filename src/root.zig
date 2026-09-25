@@ -16,11 +16,16 @@ const trial = @import("trial.zig");
 pub const Trial = trial.Trial;
 pub const TrialDef = trial.TrialDef;
 
+pub const PerfLevel = struct {
+    cpu: bool = false,
+    mem: bool = false,
+};
+
 pub const GlobalOpts = struct {
     debug_warn: bool = true,
     verbose: u32 = 1,
     use_tsc: bool = false,
-    disable_perf: bool = true,
+    perf_level: PerfLevel = .{},
 };
 
 pub var gopts = GlobalOpts{};
@@ -124,7 +129,7 @@ pub const Study = struct {
         var this = Study{
             .env = .{ .alloc = alloc, .io = io },
             .name = name orelse "zmida",
-            .def = build_def(config, args),
+            .def = make_def(config, gopts.perf_level, args),
             .trials = .init(alloc),
             .stats = .init(alloc),
         };
@@ -139,7 +144,7 @@ pub const Study = struct {
         return this;
     }
 
-    fn build_def(config: Config, args: anytype) TrialDef {
+    fn make_def(config: Config, plevel: PerfLevel, args: anytype) TrialDef {
         const nargs = util.argslen(args);
         switch (config) {
             .count => |c| {
@@ -147,6 +152,8 @@ pub const Study = struct {
                     .warmup_sweeps = util.idiv_up(u64, c.warmup_calls, nargs),
                     .trial_samples = c.trial_samples,
                     .sample_sweeps = util.idiv_up(u64, c.sample_calls, nargs),
+                    .perf_sweeps = util.idiv_up(u64, c.perf_calls, nargs),
+                    .perf_level = plevel,
                 } };
             },
             .timed => |c| {
@@ -154,6 +161,8 @@ pub const Study = struct {
                     .warmup_nanos = c.warmup_millis * 1000,
                     .trial_samples = c.trial_samples,
                     .sample_nanos = util.idiv_up(u64, c.trial_millis * 1000, c.trial_samples),
+                    .perf_nanos = c.perf_millis * 1000,
+                    .perf_level = plevel,
                 } };
             },
         }
@@ -231,7 +240,8 @@ pub const PerfSample = struct {
 };
 
 pub const CpuCounters = extern struct {
-    const events = [_]perf.Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
+    pub const events = [_]perf.Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
+    nrecords: u64 = 0,
     time_enabled: u64 = 0,
     time_running: u64 = 0,
     instructions: u64 = 0,
@@ -251,10 +261,15 @@ pub const CpuCounters = extern struct {
             .l1i_read_miss = ps.records[4],
         };
     }
+
+    pub fn as_payload(this: *@This()) []u8 {
+        return @as([*]u8, @ptrCast(this))[0..@sizeOf(@This())];
+    }
 };
 
-pub const MemReadCounters = struct {
-    const events = [_]perf.Event{ .l1d_read, .l1d_read_miss, .ll_read, .ll_read_miss };
+pub const MemReadCounters = extern struct {
+    pub const events = [_]perf.Event{ .l1d_read, .l1d_read_miss, .ll_read, .ll_read_miss };
+    nrecords: u64 = 0,
     time_enabled: u64 = 0,
     time_running: u64 = 0,
     l1d_read: u64 = 0,
@@ -272,10 +287,15 @@ pub const MemReadCounters = struct {
             .ll_read_miss = ps.record[3],
         };
     }
+
+    pub fn as_payload(this: *@This()) []u8 {
+        return @as([*]u64, @ptrCast(this))[0..@sizeOf(@This())];
+    }
 };
 
-pub const MemWriteCounters = struct {
-    const events = [_]perf.Event{ .l1d_write, .ll_write, .ll_write_miss };
+pub const MemWriteCounters = extern struct {
+    pub const events = [_]perf.Event{ .l1d_write, .ll_write, .ll_write_miss };
+    nrecords: u64 = 0,
     time_enabled: u64 = 0,
     time_running: u64 = 0,
     l1d_write: u64 = 0,
@@ -290,6 +310,10 @@ pub const MemWriteCounters = struct {
             .ll_write = ps.record[1],
             .ll_write_miss = ps.record[2],
         };
+    }
+
+    pub fn as_payload(this: *@This()) []u8 {
+        return @as([*]u64, @ptrCast(this))[0..@sizeOf(@This())];
     }
 };
 
