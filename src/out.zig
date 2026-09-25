@@ -6,7 +6,7 @@ const floor = std.math.floor;
 const log = std.math.log;
 
 const text_header =
-    \\{[name]s}
+    \\study: {[name]s}
     \\units: {[longunits]s}
     \\clock: {[clkname]} @ {[clkfreq]d} Hz
     \\mode: {[mode]s}

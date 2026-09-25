@@ -134,9 +134,24 @@ pub const Study = struct {
             .stats = .init(alloc),
         };
         verbose(1, "Running study {s}\n", this.name);
-        verbose(1, "{s}: {any}\n", .{ @typeName(@TypeOf(config)), config });
+        switch (config) {
+            .count => |c| {
+                verbose(1, "Count:\n", .{});
+                verbose(1, "\t- warmup calls: {d}\n", .{c.warmup_calls});
+                verbose(1, "\t- trial samples: {d}\n", .{c.trial_samples});
+                verbose(1, "\t- sample calls: {d}\n", .{c.sample_calls});
+                verbose(1, "\t- perf calls: {d}\n", .{c.perf_calls});
+            },
+            .timed => |c| {
+                verbose(1, "Timed:\n", .{});
+                verbose(1, "\t- warmup millis: {d}\n", .{c.warmup_millis});
+                verbose(1, "\t- trial samples: {d}\n", .{c.trial_samples});
+                verbose(1, "\t- trial millis: {d}\n", .{c.trial_millis});
+                verbose(1, "\t- perf millis: {d}\n", .{c.perf_millis});
+            },
+        }
         inline for (0..funcs.len) |i| {
-            verbose(1, "  Running trial {d}/{d}\n", .{ i + 1, funcs.len });
+            verbose(1, "Running trial {d}/{d}\n", .{ i + 1, funcs.len });
             var t = Trial.init(this.env, this.def, util.get_fname(funcs[i]));
             try t.run(funcs[i], args);
             try this.trials.append(t);
