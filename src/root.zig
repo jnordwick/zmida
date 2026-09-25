@@ -247,7 +247,8 @@ pub const Sample = struct {
 
 pub const PerfSample = struct {
     ord: u64 = 0,
-    calls: u64 = 0,
+    cpu_calls: u64 = 0,
+    mem_calls: u64 = 0,
 
     cpu: CpuCounters = .{},
     memr: MemReadCounters = .{},
@@ -304,7 +305,7 @@ pub const MemReadCounters = extern struct {
     }
 
     pub fn as_payload(this: *@This()) []u8 {
-        return @as([*]u64, @ptrCast(this))[0..@sizeOf(@This())];
+        return @as([*]u8, @ptrCast(this))[0..@sizeOf(@This())];
     }
 };
 
@@ -328,7 +329,7 @@ pub const MemWriteCounters = extern struct {
     }
 
     pub fn as_payload(this: *@This()) []u8 {
-        return @as([*]u64, @ptrCast(this))[0..@sizeOf(@This())];
+        return @as([*]u8, @ptrCast(this))[0..@sizeOf(@This())];
     }
 };
 

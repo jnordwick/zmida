@@ -9,12 +9,27 @@ pub fn main(init: std.process.Init) !void {
     for (&xx) |*x| {
         x.* = rand.float(f64) * 20;
     }
-    //const xx_slice: []f64 = @ptrCast(&xx);
-    const funcs = .{ tgamma, lgamma, tgamma, lgamma };
+    const funcs = .{
+        tgamma,
+        lgamma,
+        tgamma,
+        lgamma,
+    };
 
-    zm.set_global_opts(.{ .verbose = 1, .use_tsc = true, .perf_level = .{ .cpu = true } });
+    zm.set_global_opts(.{
+        .verbose = 1,
+        .use_tsc = true,
+        .perf_level = .{ .cpu = true, .mem = true },
+    });
     const config: zm.Config = .bycount(.{});
-    var study = try zm.Study.run(init.gpa, init.io, null, config, funcs, &xx);
+    var study = try zm.Study.run(
+        init.gpa,
+        init.io,
+        null,
+        config,
+        funcs,
+        &xx,
+    );
     try study.write_text(null, .{});
     try study.write_summary(null, .{ .separator = ' ' });
     // try study.write_gnuplot("example", .{});
