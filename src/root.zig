@@ -278,6 +278,13 @@ pub const CpuCounters = extern struct {
         };
     }
 
+    pub fn adj(this: *const @This(), x: u64) f64 {
+        const n: f64 = @floatFromInt(this.time_running);
+        const d: f64 = @floatFromInt(this.time_enabled);
+        const xx: f64 = @floatFromInt(x);
+        return (n / d) * xx;
+    }
+
     pub fn as_payload(this: *@This()) []u8 {
         return @as([*]u8, @ptrCast(this))[0..@sizeOf(@This())];
     }
@@ -304,6 +311,13 @@ pub const MemReadCounters = extern struct {
         };
     }
 
+    pub fn adj(this: *const @This(), x: u64) f64 {
+        const n: f64 = @floatFromInt(this.time_running);
+        const d: f64 = @floatFromInt(this.time_enabled);
+        const xx: f64 = @floatFromInt(x);
+        return (n / d) * xx;
+    }
+
     pub fn as_payload(this: *@This()) []u8 {
         return @as([*]u8, @ptrCast(this))[0..@sizeOf(@This())];
     }
@@ -326,6 +340,13 @@ pub const MemWriteCounters = extern struct {
             .ll_write = ps.record[1],
             .ll_write_miss = ps.record[2],
         };
+    }
+
+    pub fn adj(this: *const @This(), x: u64) f64 {
+        const n: f64 = @floatFromInt(this.time_running);
+        const d: f64 = @floatFromInt(this.time_enabled);
+        const xx: f64 = @floatFromInt(x);
+        return (n / d) * xx;
     }
 
     pub fn as_payload(this: *@This()) []u8 {
