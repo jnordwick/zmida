@@ -21,7 +21,7 @@ pub fn main(init: std.process.Init) !void {
         .use_tsc = true,
         .perf_level = .{ .cpu = true, .mem = true },
     });
-    const config: zm.Config = .bycount(.{});
+    const config: zm.Config = .bytime(.{});
     var study = try zm.Study.run(
         init.gpa,
         init.io,
