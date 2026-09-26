@@ -50,7 +50,11 @@ This are the next few thigs I want to work on:
 - better documentation
 - gnuplot: less ugly output and chart options
 - gnuplot: add basic bar (relative mode, perf events)
-- perf counters for cache (also perf multiplexed adj)
+
+
+* BELOw HERE IS OUTDATED
+I'll update it soon. The API is just getting cleaned up a little.
+Look at main.zig for an example.
 
 * Example
 
