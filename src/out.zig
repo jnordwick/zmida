@@ -114,11 +114,11 @@ pub fn text_thruput(
             },
         );
     }
+    try text_perf(writer, trials, opts);
     try writer.flush();
-    //    if (opts.with_perf) try text_perf(writer, trials, opts);
 }
 
-pub fn text_perf(
+pub fn text_perf_cpu(
     writer: *std.Io.Writer,
     trials: []const root.TrialStats,
     opts: root.TextOpts,
@@ -164,8 +164,7 @@ pub fn text_perf(
     try writer.writeByte('\n');
 
     for (trials) |stats| {
-        const ipc = float_div(f64, stats.perf_instructions, stats.perf_cpu_cycles);
-        const brmsrt = 1e6 * float_div(f64, stats.perf_branch_miss, stats.perf_branch_total);
+        if (stats.trial.perf.cpu_calls == 0) continue;
         try writer.print(
             "{[name]s: <[max_name_len]} {[vbar]s}" ++
                 "{[ipc]d: >7.3} " ++
@@ -178,13 +177,109 @@ pub fn text_perf(
             .{
                 .name = stats.trial.name,
                 .max_name_len = max_name_len + 1,
-                .ipc = ipc,
-                .inst = float_div(f64, stats.perf_instructions, stats.trial_calls),
-                .imiss = float_div(f64, stats.perf_imiss_total, stats.trial_calls),
-                .cyc = float_div(f64, stats.perf_cpu_cycles, stats.trial_calls),
-                .brmsrt = brmsrt,
-                .brmiss = float_div(f64, stats.perf_branch_miss, stats.trial_calls),
-                .brtot = float_div(f64, stats.perf_branch_total, stats.trial_calls),
+                .ipc = stats.inst_per_cycle,
+                .inst = stats.inst_per_call,
+                .cyc = stats.cycle_per_call,
+                .imiss = stats.l1i_miss_per_call,
+                .brmsrt = stats.brmiss_per_mill,
+                .brmiss = stats.brmiss_per_call,
+                .brtot = stats.branch_per_call,
+                .vbar = vbar,
+            },
+        );
+    }
+    try writer.flush();
+}
+
+pub fn text_perf(
+    writer: *std.Io.Writer,
+    trials: []const root.TrialStats,
+    opts: root.TextOpts,
+) !void {
+    try writer.writeByte('\n');
+    try text_perf_cpu(writer, trials, opts);
+    try writer.writeByte('\n');
+    try text_perf_mem(writer, trials, opts);
+}
+
+pub fn text_perf_mem(
+    writer: *std.Io.Writer,
+    trials: []const root.TrialStats,
+    opts: root.TextOpts,
+) !void {
+    var max_name_len: usize = "fn".len;
+    for (trials) |t| {
+        max_name_len = @max(max_name_len, t.trial.name.len);
+    }
+    const vbar, const hbar, const plus =
+        if (opts.ascii) .{ "|", "-", "+" } else .{ "\u{2502}", "\u{2500}", "\u{253c}" };
+
+    try writer.print("{[c1]s: <[max_name_len]} {[vbar]s} " ++
+        "{[c2]s: ^[sep_len]} {[vbar]s} " ++
+        "{[c3]s: ^[sep_len]}\n", .{
+        .max_name_len = max_name_len + 1,
+        .vbar = vbar,
+        .sep_len = 33,
+        .c1 = "",
+        .c2 = "L1 Cache",
+        .c3 = "LL Cache",
+    });
+
+    try writer.print(
+        "{[name]s: <[max_name_len]} {[vbar]s}" ++
+            "{[l1mpm]s: >8} " ++
+            "{[l1mpc]s: >7} " ++
+            "{[l1rpc]s: >8} " ++
+            "{[l1wpc]s: >8} {[vbar]s}" ++
+            "{[llmpc]s: >7} " ++
+            "{[llrpc]s: >7} " ++
+            "{[llwmpc]s: >7} " ++
+            "{[llwpc]s: >7}\n",
+        .{
+            .name = "fn",
+            .max_name_len = max_name_len + 1,
+            .l1mpm = "rmiss/M",
+            .l1mpc = "rmiss",
+            .l1rpc = "read",
+            .l1wpc = "write",
+            .llmpc = "rmiss",
+            .llrpc = "read",
+            .llwmpc = "wmiss",
+            .llwpc = "write",
+            .vbar = vbar,
+        },
+    );
+
+    try write_n(writer, hbar, max_name_len + 2);
+    try write_n(writer, plus, 1);
+    try write_n(writer, hbar, 9 * 3 + 8);
+    try write_n(writer, plus, 1);
+    try write_n(writer, hbar, 8 * 4 - 1);
+    try writer.writeByte('\n');
+
+    for (trials) |stats| {
+        if (stats.trial.perf.mem_calls == 0) continue;
+        try writer.print(
+            "{[name]s: <[max_name_len]} {[vbar]s}" ++
+                "{[l1mpm]d: >8.3} " ++
+                "{[l1mpc]d: >7.3} " ++
+                "{[l1rpc]d: >8.3} " ++
+                "{[l1wpc]d: >8.3} {[vbar]s}" ++
+                "{[llmpc]d: >7.3} " ++
+                "{[llrpc]d: >7.3} " ++
+                "{[llwmpc]d: >7.3} " ++
+                "{[llwpc]d: >7.3}\n",
+            .{
+                .name = stats.trial.name,
+                .max_name_len = max_name_len + 1,
+                .l1mpm = stats.l1d_miss_per_mill,
+                .l1mpc = stats.l1d_read_miss_per_call,
+                .l1rpc = stats.l1d_read_per_call,
+                .l1wpc = stats.l1d_write_per_call,
+                .llmpc = stats.ll_read_miss_per_call,
+                .llrpc = stats.ll_read_per_call,
+                .llwmpc = stats.ll_write_miss_per_call,
+                .llwpc = stats.ll_write_per_call,
                 .vbar = vbar,
             },
         );
@@ -286,10 +381,8 @@ pub fn text_latency(
             },
         );
     }
+    try text_perf(writer, trials, opts);
     try writer.flush();
-    try writer.writeByte('\n');
-    try writer.writeByte('\n');
-    //    try if (opts.with_perf) text_perf(writer, trials, opts);
 }
 
 pub fn csv_summary(
@@ -308,13 +401,6 @@ pub fn csv_summary(
         for (&cols) |c| {
             try writer.print("{c}p{d}", .{ opts.separator, c });
         }
-
-        // perf header
-        // if (opts.with_perf) {
-        //     try writer.print("{[0]c}perf_enable{[0]c}perf_running" ++
-        //         "{[0]c}perf_cpucycles{[0]c}perf_inst{[0]c}erf_branchmiss" ++
-        //         "{[0]c}perf_branches{[0]c}perf_imiss", .{opts.separator});
-        // }
         try writer.writeByte('\n');
     }
 
@@ -336,23 +422,6 @@ pub fn csv_summary(
                 .sep = opts.separator,
             });
         }
-        // if (opts.with_perf) {
-        //     try writer.print(
-        //         "{[s]c}{[enabled]d}{[s]c}{[running]d}{[s]c}" ++
-        //             "{[cpucycles]d}{[s]c}{[inst]d}{[s]c}{[brmiss]d}" ++
-        //             "{[s]c}{[branches]d}{[s]c}{[imiss]d}",
-        //         .{
-        //             .s = opts.separator,
-        //             .enabled = t.perf_time_enabled,
-        //             .running = t.perf_time_running,
-        //             .cpucycles = t.perf_cpu_cycles,
-        //             .inst = t.perf_instructions,
-        //             .brmiss = t.perf_branch_miss,
-        //             .branches = t.perf_branch_total,
-        //             .imiss = t.perf_imiss_total,
-        //         },
-        //     );
-        // }
         try writer.writeByte('\n');
     }
     try writer.flush();

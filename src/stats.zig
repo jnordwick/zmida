@@ -19,6 +19,7 @@ pub const TrialStats = struct {
     inst_per_cycle: f64 = 0,
     inst_per_call: f64 = 0,
     cycle_per_call: f64 = 0,
+    brmiss_per_mill: f64 = 0,
     brmiss_per_call: f64 = 0,
     branch_per_call: f64 = 0,
     l1i_miss_per_call: f64 = 0,
@@ -28,13 +29,12 @@ pub const TrialStats = struct {
     l1d_read_per_call: f64 = 0,
     l1d_read_miss_per_call: f64 = 0,
 
-    ll_miss_per_mill: f64 = 0,
     ll_read_per_call: f64 = 0,
     ll_read_miss_per_call: f64 = 0,
 
     l1d_write_per_call: f64 = 0,
-    ll_write_per_call: f64 = 0,
     ll_write_miss_per_call: f64 = 0,
+    ll_write_per_call: f64 = 0,
 
     percentiles: [101]f64 = @splat(0),
 
@@ -61,7 +61,7 @@ pub const TrialStats = struct {
         const memr = trial.perf.memr;
         const memw = trial.perf.memw;
 
-        return TrialStats{
+        const ts = TrialStats{
             .trial = trial,
             .trial_nanos = total_nanos,
             .trial_calls = total_calls,
@@ -71,26 +71,33 @@ pub const TrialStats = struct {
             .percentiles = percentiles(lat),
 
             .inst_per_cycle = float_div(f64, cpu.instructions, cpu.cpu_cycles),
-            .inst_per_call = cpu.adj(cpu.instructions) / cpu_calls,
-            .cycle_per_call = cpu.adj(cpu.cpu_cycles) / cpu_calls,
-            .brmiss_per_call = cpu.adj(cpu.branch_miss) / cpu_calls,
-            .branch_per_call = cpu.adj(cpu.branch_total) / cpu_calls,
-            .l1i_miss_per_call = cpu.adj(cpu.l1i_read_miss) / cpu_calls,
+            .inst_per_call = adj(cpu, cpu.instructions) / cpu_calls,
+            .cycle_per_call = adj(cpu, cpu.cpu_cycles) / cpu_calls,
+            .brmiss_per_mill = float_div(f64, 1_000_000 * cpu.branch_miss, cpu.branch_total),
+            .brmiss_per_call = adj(cpu, cpu.branch_miss) / cpu_calls,
+            .branch_per_call = adj(cpu, cpu.branch_total) / cpu_calls,
+            .l1i_miss_per_call = adj(cpu, cpu.l1i_read_miss) / cpu_calls,
 
-            .l1d_miss_per_mill = float_div(f64, 1000000 * memr.l1d_read_miss, memr.l1d_read),
-            .l1d_read_per_call = memr.adj(memr.l1d_read) / mem_calls,
-            .l1d_read_miss_per_call = memr.adj(memr.l1d_read_miss) / mem_calls,
+            .l1d_read_per_call = adj(memr, memr.l1d_read) / mem_calls,
+            .l1d_read_miss_per_call = adj(memr, memr.l1d_read_miss) / mem_calls,
 
-            .ll_miss_per_mill = float_div(f64, 1000000 * memr.ll_read_miss, memr.ll_read),
-            .ll_read_per_call = memr.adj(memr.ll_read) / mem_calls,
-            .ll_read_miss_per_call = memr.adj(memr.ll_read_miss) / mem_calls,
+            .ll_read_per_call = adj(memr, memr.ll_read) / mem_calls,
+            .ll_read_miss_per_call = adj(memr, memr.ll_read_miss) / mem_calls,
 
-            .l1d_write_per_call = memw.adj(memw.l1d_write) / mem_calls,
-            .ll_write_per_call = memw.adj(memw.ll_write) / mem_calls,
-            .ll_write_miss_per_call = memw.adj(memw.ll_write_miss) / mem_calls,
+            .l1d_write_per_call = adj(memw, memw.l1d_write) / mem_calls,
+            .ll_write_per_call = adj(memw, memw.ll_write) / mem_calls,
+            .ll_write_miss_per_call = adj(memw, memw.ll_write_miss) / mem_calls,
         };
+        return ts;
     }
 };
+
+fn adj(counter: anytype, c: u64) f64 {
+    const ru: f64 = @floatFromInt(counter.time_running);
+    const en: f64 = @floatFromInt(counter.time_enabled);
+    const cf: f64 = @floatFromInt(c);
+    return (en / ru) * cf;
+}
 
 fn latencies(alloc: Allocator, samples: []root.Sample) []f64 {
     var s = alloc.alloc(f64, samples.len) catch @panic("oom");

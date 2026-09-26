@@ -64,9 +64,10 @@ pub const Sample = extern struct {
         const en: f64 = @floatFromInt(this.enabled);
         const ru: f64 = @floatFromInt(this.running);
         const d: f64 = @floatFromInt(this.data[i]);
+        const v = (en / ru) * d;
         return switch (@typeInfo(T)) {
-            .float => d,
-            .int => @intFromFloat(@round((en / ru) * d)),
+            .float => v,
+            .int => @intFromFloat(@round(v)),
             else => @compileError("bad type"),
         };
     }
