@@ -2,61 +2,32 @@ const std = @import("std");
 const zm = @import("zmida");
 
 pub fn main(init: std.process.Init) !void {
-    const N = 100;
-    var xosh: std.Random.Xoshiro256 = .init(0);
-    var rand = xosh.random();
-    var xx: [N]f64 = undefined;
-    for (&xx) |*x| {
-        x.* = rand.float(f64) * 20;
-    }
-    const funcs = .{
-        tgamma,
-        lgamma,
-        tgamma,
-        lgamma,
-    };
+    const funcs = .{ logtgamma, lgamma };
+    const xx = zm.gen.uniform(f64, 100, 0, 10, 0);
 
     zm.set_global_opts(.{
-        .verbose = 1,
         .use_tsc = true,
-        .perf_level = .{ .cpu = true, .mem = true },
+        .perf_level = .{ .cpu = true },
     });
     const config: zm.Config = .bytime(.{});
     var study = try zm.Study.run(
         init.gpa,
         init.io,
-        null,
+        "gamma",
         config,
         funcs,
         &xx,
     );
     defer study.deinit();
-    try study.write_text(null, .{ .mode = .thru });
-    try study.write_gnuplot("example", .{});
-    try study.write_gnuplot_perf("example", .{});
+    try study.write_text(null, .{ .mode = .lat });
+    try study.write_gnuplot("gamma", .{});
+    try study.write_gnuplot_perf("gamma", .{});
 }
 
 fn lgamma(x: f64) f64 {
     return std.math.lgamma(f64, x);
 }
 
-fn tgamma(x: f64) f64 {
-    return std.math.gamma(f64, x);
-}
-
-fn log(x: f64) f64 {
-    return @log(x);
-}
-
-fn wait(x: u32) void {
-    const start = zm.util.now();
-    zm.util.pause_until(start + x * 1000 * 1000);
-}
-
-fn printf(io: anytype, comptime fmt: anytype, args: anytype) !void {
-    var buf: [256]u8 = undefined;
-    var writer = std.Io.File.stdout().writer(io, &buf);
-
-    try writer.interface.print(fmt, args);
-    try writer.interface.flush();
+fn logtgamma(x: f64) f64 {
+    return std.math.log(f64, std.math.e, std.math.gamma(f64, x));
 }

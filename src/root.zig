@@ -17,6 +17,7 @@ const util = @import("util.zig");
 const verbose = util.verbose;
 const debug_warn = util.debug_warn;
 pub const set_global_opts = util.set_global_opts;
+pub const gen = @import("gen.zig");
 
 pub const PerfLevel = struct {
     cpu: bool = false,
@@ -31,17 +32,17 @@ pub const GlobalOpts = struct {
 };
 
 pub const CountConfig = struct {
-    warmup_calls: u32 = 5_000,
+    warmup_calls: u32 = 100_000,
     trial_samples: u32 = 10_000,
     sample_calls: u32 = 1_000,
     perf_calls: u32 = 1_000_000,
 };
 
 pub const TimedConfig = struct {
-    warmup_millis: u32 = 1000,
-    trial_samples: u32 = 100,
-    trial_millis: u32 = 1000,
-    perf_millis: u32 = 1000,
+    warmup_millis: u32 = 500,
+    trial_samples: u32 = 200,
+    trial_millis: u32 = 3000,
+    perf_millis: u32 = 1500,
 };
 
 pub const Config = union(enum) {

@@ -49,68 +49,74 @@ This are the next few thigs I want to work on:
 - better documentation
 
 
-* BELOW HERE IS OUTDATED
-I'll update it soon. The API is just getting cleaned up a little.
-Look at main.zig for an example.
-
 * Example
 
 #+BEGIN_SRC zig
-  pub fn main(init: std.process.Init) !void {
+pub fn main(init: std.process.Init) !void {
+    const funcs = .{ logtgamma, lgamma };
+    const xx = zm.gen.uniform(f64, 100, 0, 10, 0);
 
-      // generate benchmark inputs
-      const N = 100;
-      var xosh: std.Random.Xoshiro256 = .init(0);
-      var rand = xosh.random();
-      var args: [N]f64 = undefined;
-      for (&args) |*x| {
-          x.* = rand.float(f64) * 20;
-      }
+    zm.set_global_opts(.{
+        .use_tsc = true,
+        .perf_level = .{ .cpu = true },
+    });
+    const config: zm.Config = .bytime(.{});
+    var study = try zm.Study.run(
+        init.gpa,
+        init.io,
+        "gamma",
+        config,
+        funcs,
+        &xx,
+    );
+    defer study.deinit();
+    try study.write_text(null, .{ .mode = .lat });
+    try study.write_gnuplot("gamma", .{});
+    try study.write_gnuplot_perf("gamma", .{});
+}
 
-      // the functions to benchmark to a tuple
-      const funcs = .{ lgamma, tgamma };
-
-      // create a configuration with defaults
-      const config = zm.TimedConfig{};
-      // output a little exta and use RDTSC for timing
-      zm.setGlobalOpts(.{ .verbose = 2, .use_tsc = true });
-
-      // run the study
-      // the allocator and io are used by the benchmark harness. these are no
-      // the ones used by the passed in functions.
-      // 
-      var study = try zm.Study.run(init.gpa, init.io, null, config, funcs, args);
-      defer study.deinit(); 
-
-      // write the output, null mean to stdout
-      try study.write_text(null, .{ .mode = .lat });
-      try study.write_summary("example", .{ .separator = '\t' });
-      try study.write_gnuplot("example", .{});
-  }
 #+END_SRC
 
 Here is what the run looks like
 
 #+BEGIN_EXAMPLE
-Running study zmida
-root.TimedConfig: .{ .warmup_nanos = 100000000, .trial_nanos = 1000000000, .trial_samples = 250 }
-  Running trial 1/2
-  Trial lgamma with 250 samples:
-  Running trial 2/2
-  Trial tgamma with 250 samples:
-Generating stats for study zmida
-default suite name
+!!! WARNING !!! Compiled in debug mode.
+Running study gamma
+Timed:
+	- warmup millis: 500
+	- trial samples: 200
+	- trial millis: 3000
+	- perf millis: 1500
+Running trial 1/2
+Trial logtgamma warmup (500.000ms) samples @ 15.000ms
+Trial logtgamma cpu perf_events. 1500000000 ns
+Running trial 2/2
+Trial lgamma warmup (500.000ms) samples @ 15.000ms
+Trial lgamma cpu perf_events. 1500000000 ns
+Generating stats for study gamma
+study: gamma
 units: nanosec/op
 clock: .tsc @ 1497600000 Hz
 mode: latency (lower is better)
-fn      |      calls  seconds    mean |   best     p75     p50     p25   worst
---------+-----------------------------+---------------------------------------
-lgamma  |    5701300     1.04  181.95 | 175.80  179.51  181.56  184.06  201.97
-tgamma  |    6026900     1.04  171.95 | 164.65  169.98  172.00  173.88  189.54
+
+fn         |      calls  seconds    mean |   best     p75     p50     p25   worst
+-----------+-----------------------------+---------------------------------------
+logtgamma  |   12638100     3.04  240.37 | 238.46  239.60  240.22  240.77  264.67
+lgamma     |   12555300     3.04  242.10 | 240.66  241.69  241.94  242.46  252.84
+
+fn         |    ipc      insts     cycles    imiss |  miss/M     misses   branches
+-----------+---------------------------------------+------------------------------
+logtgamma  |  2.167     1604.7      740.6    0.013 | 6360.71      1.957      307.7
+lgamma     |  2.156     1609.7      746.6    0.013 | 6415.73      1.980      308.7
 #+END_EXAMPLE
 
 
-And here is the ugly gnnuplot -- I really need to make this look better
+And here is the ugly gnnuplot -- I really need to make this look better. If anybody
+is better with gnuplot, your help is greate appreciated. They do look better with more
+trials since the y-range is better then. Also, thinking of removing the min dot since
+that is what really messes things up.
 
-[[./example.png]]
+[[./gamma.svg]]
+
+[[./gamma-perf.svg]]
 
