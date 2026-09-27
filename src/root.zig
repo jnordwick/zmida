@@ -217,7 +217,7 @@ pub const Study = struct {
         const file = try util.get_file(this.env, fname, "-summary.csv");
         defer if (fname != null) file.close(this.env.io);
         var writer = file.writer(this.env.io, &.{});
-        try out.csv_summary(&writer.interface, this.stats.items, opts);
+        try out.csv_summary(&writer.interface, this.stats.items, opts, gopts.perf_level);
     }
 
     pub fn write_samples(this: *@This(), fname: ?[]const u8, sopts: SamplesOpts) !void {
@@ -235,6 +235,14 @@ pub const Study = struct {
         defer if (fname != null) file.close(this.env.io);
         var writer = file.writer(this.env.io, &.{});
         try out.gnuplot(&writer.interface, this.stats.items, opts);
+    }
+
+    pub fn write_gnuplot_perf(this: *@This(), fname: ?[]const u8, opts: GnuplotOpts) !void {
+        try this.statistics();
+        const file = try util.get_file(this.env, fname, "-perf.gp");
+        defer if (fname != null) file.close(this.env.io);
+        var writer = file.writer(this.env.io, &.{});
+        try out.gnuplot_perf(&writer.interface, this.stats.items, opts);
     }
 };
 

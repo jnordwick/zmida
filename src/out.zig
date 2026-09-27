@@ -367,17 +367,31 @@ pub fn csv_summary(
     writer: *std.Io.Writer,
     trials: []const root.TrialStats,
     opts: root.SummaryOpts,
+    plevel: root.PerfLevel,
 ) !void {
-    const cols = [_]u32{ 100, 75, 50, 25, 0 };
-
     // header
     if (opts.with_header) {
         try writer.print(
             "fn{[sep]c}calls{[sep]c}seconds{[sep]c}mean",
             .{ .sep = opts.separator },
         );
-        for (&cols) |c| {
-            try writer.print("{c}p{d}", .{ opts.separator, c });
+        for (opts.pctiles) |p| {
+            try writer.print("{c}p{d}", .{ opts.separator, p });
+        }
+        if (opts.with_perf and plevel.cpu) {
+            try writer.print(
+                "{[sep]c}ipc{[sep]c}inst_per_call{[sep]c}cycle_per_call" ++
+                    "{[sep]c}brmiss_per_mill{[sep]c}brmiss_per_call{[sep]c}branch_per_call{[sep]c}l1i_miss_per_call",
+                .{ .sep = opts.separator },
+            );
+        }
+        if (opts.with_perf and plevel.mem) {
+            try writer.print(
+                "{[sep]c}l1d_read_per_call{[sep]c}l1d_read_miss_per_call" ++
+                    "{[sep]c}ll_read_per_call{[sep]c}ll_read_miss_per_call" ++
+                    "{[sep]c}l1d_write_per_call{[sep]c}ll_write_per_call{[sep]c}ll_write_miss_per_call",
+                .{ .sep = opts.separator },
+            );
         }
         try writer.writeByte('\n');
     }
@@ -394,11 +408,45 @@ pub fn csv_summary(
                 .sep = opts.separator,
             },
         );
-        for (&cols) |c| {
+        for (opts.pctiles) |p| {
+            // percentiles[] is stored descending (index 0 = worst, index 100 = best),
+            // so ascending percentile `p` lives at index (100 - p).
             try writer.print("{[sep]c}{[v]d:.4}", .{
-                .v = t.percentiles[c],
+                .v = t.percentiles[100 - p],
                 .sep = opts.separator,
             });
+        }
+        if (opts.with_perf and plevel.cpu) {
+            try writer.print(
+                "{[sep]c}{[ipc]d:.4}{[sep]c}{[inst]d:.4}{[sep]c}{[cyc]d:.4}" ++
+                    "{[sep]c}{[brmrt]d:.4}{[sep]c}{[brmiss]d:.4}{[sep]c}{[brtot]d:.4}{[sep]c}{[imiss]d:.4}",
+                .{
+                    .ipc = t.inst_per_cycle,
+                    .inst = t.inst_per_call,
+                    .cyc = t.cycle_per_call,
+                    .brmrt = t.brmiss_per_mill,
+                    .brmiss = t.brmiss_per_call,
+                    .brtot = t.branch_per_call,
+                    .imiss = t.l1i_miss_per_call,
+                    .sep = opts.separator,
+                },
+            );
+        }
+        if (opts.with_perf and plevel.mem) {
+            try writer.print(
+                "{[sep]c}{[l1r]d:.4}{[sep]c}{[l1rm]d:.4}{[sep]c}{[llr]d:.4}{[sep]c}{[llrm]d:.4}" ++
+                    "{[sep]c}{[l1w]d:.4}{[sep]c}{[llw]d:.4}{[sep]c}{[llwm]d:.4}",
+                .{
+                    .l1r = t.l1d_read_per_call,
+                    .l1rm = t.l1d_read_miss_per_call,
+                    .llr = t.ll_read_per_call,
+                    .llrm = t.ll_read_miss_per_call,
+                    .l1w = t.l1d_write_per_call,
+                    .llw = t.ll_write_per_call,
+                    .llwm = t.ll_write_miss_per_call,
+                    .sep = opts.separator,
+                },
+            );
         }
         try writer.writeByte('\n');
     }
@@ -433,18 +481,46 @@ pub fn gnuplot(
 ) !void {
     const suite_title = opts.title orelse "zmida";
     const units = "Kops/sec";
+    // ascending percentiles, matching template.gp's header comment (p0 p10 p25 p50 p75 p90 p100)
     const pctiles = [_]u32{ 0, 10, 25, 50, 75, 90, 100 };
 
     try writer.print("$Data << EOD\n", .{});
     for (trials) |t| {
         try writer.print("{[name]s} {[mean]d:.4}", .{ .name = t.trial.name, .mean = 1e6 / t.call_avg_ns });
         for (pctiles) |p| {
-            try writer.print(" {d:.4}", .{1e6 / t.percentiles[p]});
+            // percentiles[] is stored descending, so ascending percentile p is at index (100 - p)
+            try writer.print(" {d:.4}", .{1e6 / t.percentiles[100 - p]});
         }
         try writer.writeByte('\n');
     }
     try writer.print("EOD\n\n", .{});
     try writer.print(gnuplot_template, .{ .title = suite_title, .units = units });
+    try writer.flush();
+}
+
+const gnuplot_perf_template = @embedFile("template_perf.gp");
+
+pub fn gnuplot_perf(
+    writer: *std.Io.Writer,
+    trials: []const root.TrialStats,
+    opts: root.GnuplotOpts,
+) !void {
+    try writer.print("$Data << EOD\n", .{});
+    for (trials) |t| {
+        try writer.print(
+            "{[name]s} {[inst]d:.4} {[cyc]d:.4} {[brm]d:.4} {[brt]d:.4} {[imiss]d:.4}\n",
+            .{
+                .name = t.trial.name,
+                .inst = t.inst_per_call,
+                .cyc = t.cycle_per_call,
+                .brm = t.brmiss_per_call,
+                .brt = t.branch_per_call,
+                .imiss = t.l1i_miss_per_call,
+            },
+        );
+    }
+    try writer.print("EOD\n\n", .{});
+    try writer.print(gnuplot_perf_template, .{ .title = opts.title orelse "zmida" });
     try writer.flush();
 }
 

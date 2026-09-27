@@ -33,7 +33,8 @@ pub fn main(init: std.process.Init) !void {
     defer study.deinit();
     try study.write_text(null, .{ .mode = .thru });
     //try study.write_summary(null, .{ .separator = ' ' });
-    //try study.write_gnuplot("example", .{});
+    try study.write_gnuplot("example", .{});
+    try study.write_gnuplot_perf("example", .{});
 }
 
 fn lgamma(x: f64) f64 {

@@ -46,13 +46,10 @@ A lot of the top level functions have some comptime
 This are the next few thigs I want to work on:
 
 - make some simple functions for most basic "bench this"
-- add adaptive mode that run by-count trials by estimating workload
 - better documentation
-- gnuplot: less ugly output and chart options
-- gnuplot: add basic bar (relative mode, perf events)
 
 
-* BELOw HERE IS OUTDATED
+* BELOW HERE IS OUTDATED
 I'll update it soon. The API is just getting cleaned up a little.
 Look at main.zig for an example.
 
