@@ -50,6 +50,10 @@ This are the next few thigs I want to work on:
 - make some simple functions for most basic "bench this"
 - better documentation
 
+* AI
+
+Various models have been used for code review, debugging assistance, the gnuplot
+releated code and files, and to generate test code.
 
 * Example
 
