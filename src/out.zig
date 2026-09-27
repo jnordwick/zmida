@@ -77,14 +77,11 @@ pub fn text_latency(
         },
     );
 
-    var separator_len = name_len + 2;
-    try write_n(writer, hbar, separator_len);
+    try write_n(writer, hbar, name_len + 2);
     try write_n(writer, plus, 1);
-    separator_len = 12 + 9 + 8;
-    try write_n(writer, hbar, separator_len);
+    try write_n(writer, hbar, 12 + 9 + 8);
     try write_n(writer, plus, 1);
-    separator_len = 5 * 8 - 1;
-    try write_n(writer, hbar, separator_len);
+    try write_n(writer, hbar, 5 * 8 - 1);
     try writer.writeByte('\n');
 
     for (trials) |stats| {
@@ -175,14 +172,11 @@ pub fn text_thruput(
         },
     );
 
-    var separator_len = name_len + 2;
-    try write_n(writer, hbar, separator_len);
+    try write_n(writer, hbar, name_len + 2);
     try write_n(writer, plus, 1);
-    separator_len = 12 + 9 + 8;
-    try write_n(writer, hbar, separator_len);
+    try write_n(writer, hbar, 12 + 9 + 8);
     try write_n(writer, plus, 1);
-    separator_len = 5 * 8 - 1;
-    try write_n(writer, hbar, separator_len);
+    try write_n(writer, hbar, 5 * 8 - 1);
     try writer.writeByte('\n');
 
     for (trials) |stats| {
