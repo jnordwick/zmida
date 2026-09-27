@@ -13,6 +13,84 @@ pub const max_events = 8;
 
 const PERF_IOC_FLAG_GROUP: usize = 1;
 
+pub const CpuCounters = extern struct {
+    pub const events = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
+    nrecords: u64 = 0,
+    time_enabled: u64 = 0,
+    time_running: u64 = 0,
+    instructions: u64 = 0,
+    cpu_cycles: u64 = 0,
+    branch_miss: u64 = 0,
+    branch_total: u64 = 0,
+    l1i_read_miss: u64 = 0,
+
+    pub fn init(ps: *const Sample) CpuCounters {
+        return .{
+            .time_enabled = ps.enabled,
+            .time_running = ps.running,
+            .instructions = ps.records[0],
+            .cpu_cycles = ps.records[1],
+            .branch_miss = ps.records[2],
+            .branch_total = ps.records[3],
+            .l1i_read_miss = ps.records[4],
+        };
+    }
+
+    pub fn as_payload(this: *@This()) []u8 {
+        return @as([*]u8, @ptrCast(this))[0..@sizeOf(@This())];
+    }
+};
+
+pub const MemReadCounters = extern struct {
+    pub const events = [_]Event{ .l1d_read, .l1d_read_miss, .ll_read, .ll_read_miss };
+    nrecords: u64 = 0,
+    time_enabled: u64 = 0,
+    time_running: u64 = 0,
+    l1d_read: u64 = 0,
+    l1d_read_miss: u64 = 0,
+    ll_read: u64 = 0,
+    ll_read_miss: u64 = 0,
+
+    pub fn init(ps: *const Sample) CpuCounters {
+        return .{
+            .time_enabled = ps.enabled,
+            .time_running = ps.running,
+            .l1d_read = ps.record[0],
+            .l1d_read_miss = ps.record[1],
+            .ll_read = ps.record[2],
+            .ll_read_miss = ps.record[3],
+        };
+    }
+
+    pub fn as_payload(this: *@This()) []u8 {
+        return @as([*]u8, @ptrCast(this))[0..@sizeOf(@This())];
+    }
+};
+
+pub const MemWriteCounters = extern struct {
+    pub const events = [_]Event{ .l1d_write, .ll_write, .ll_write_miss };
+    nrecords: u64 = 0,
+    time_enabled: u64 = 0,
+    time_running: u64 = 0,
+    l1d_write: u64 = 0,
+    ll_write: u64 = 0,
+    ll_write_miss: u64 = 0,
+
+    pub fn init(ps: *const Sample) CpuCounters {
+        return .{
+            .time_enabled = ps.enabled,
+            .time_running = ps.running,
+            .l1d_write = ps.record[0],
+            .ll_write = ps.record[1],
+            .ll_write_miss = ps.record[2],
+        };
+    }
+
+    pub fn as_payload(this: *@This()) []u8 {
+        return @as([*]u8, @ptrCast(this))[0..@sizeOf(@This())];
+    }
+};
+
 pub const Event = struct {
     const HW = PERF.COUNT.HW;
     const CACHE = PERF.COUNT.HW.CACHE;

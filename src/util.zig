@@ -1,12 +1,39 @@
 const std = @import("std");
 const tt = std.testing;
+const time = @import("time.zig");
+const Allocator = std.mem.Allocator;
+const perf = @import("perf.zig");
 
 const root = @import("root.zig");
 const ArgsType = @import("trial.zig").ArgsType;
 pub const Env = root.Env;
 
+pub fn verbose(comptime lev: u32, comptime fmt: []const u8, p: anytype) void {
+    if (lev <= gopts.verbose) {
+        std.debug.print(fmt, if (is_tuple(@TypeOf(p))) p else .{p});
+    }
+}
+
+pub inline fn debug_warn() void {
+    if (@import("builtin").mode == .Debug and gopts.debug_warn) {
+        std.debug.print("!!! WARNING !!! Compiled in debug mode.\n", .{});
+        gopts.debug_warn = false;
+    }
+}
+
+pub fn set_global_opts(opts: root.GlobalOpts) void {
+    if (have_set_gopts) @panic("can only set global opts once");
+    have_set_gopts = true;
+    gopts = opts;
+    time.Clock.setup(if (gopts.use_tsc) .tsc else .monotonic);
+    debug_warn();
+}
+
+pub var have_set_gopts: bool = false;
+pub var gopts = root.GlobalOpts{};
+
 pub fn iround(x: f64) i64 {
-    return @intCast(@round(x));
+    return @intFromFloat(@round(x));
 }
 
 pub inline fn to_slice(T: type, S: type, x: *S) []T {
@@ -115,6 +142,19 @@ pub fn get_file(env: Env, fname: ?[]const u8, suffix: []const u8) !std.Io.File {
     std.mem.copyForwards(u8, name[0..], fname.?);
     std.mem.copyForwards(u8, name[fname.?.len..], suffix);
     return std.Io.Dir.cwd().createFile(env.io, name[0..len], .{});
+}
+
+pub fn make_cpu_panel(alloc: Allocator) !perf.PerfPanel {
+    var panel: perf.PerfPanel = .init(alloc, true);
+    try panel.add(&perf.CpuCounters.events);
+    return panel;
+}
+
+pub fn make_mem_panel(alloc: Allocator) !perf.PerfPanel {
+    var panel: perf.PerfPanel = .init(alloc, false);
+    try panel.add(&perf.MemReadCounters.events);
+    try panel.add(&perf.MemWriteCounters.events);
+    return panel;
 }
 
 test "alrefs" {

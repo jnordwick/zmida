@@ -5,16 +5,19 @@ const ArgsTuple = std.meta.ArgsTuple;
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 
-pub const out = @import("out.zig");
+const out = @import("out.zig");
 const runners = @import("runners.zig");
-pub const stats = @import("stats.zig");
-pub const TrialStats = stats.TrialStats;
+const stats = @import("stats.zig");
 const time = @import("time.zig");
 const util = @import("util.zig");
-
 const trial = @import("trial.zig");
+
+pub const TrialStats = stats.TrialStats;
 pub const Trial = trial.Trial;
 pub const TrialDef = trial.TrialDef;
+
+const verbose = util.verbose;
+const debug_warn = util.debug_warn;
 
 pub const PerfLevel = struct {
     cpu: bool = false,
@@ -27,30 +30,8 @@ pub const GlobalOpts = struct {
     use_tsc: bool = false,
     perf_level: PerfLevel = .{},
 };
-var have_set_gopts: bool = false;
 
-var gopts = GlobalOpts{};
-
-pub fn set_global_opts(opts: GlobalOpts) void {
-    if (have_set_gopts) @panic("can only set global opts once");
-    have_set_gopts = true;
-    gopts = opts;
-    time.Clock.setup(if (gopts.use_tsc) .tsc else .monotonic);
-    debug_warn();
-}
-
-pub fn verbose(comptime lev: u32, comptime fmt: []const u8, p: anytype) void {
-    if (lev <= gopts.verbose) {
-        std.debug.print(fmt, if (util.is_tuple(@TypeOf(p))) p else .{p});
-    }
-}
-
-pub inline fn debug_warn() void {
-    if (@import("builtin").mode == .Debug and gopts.debug_warn) {
-        std.debug.print("!!! WARNING !!! Compiled in debug mode.\n", .{});
-        gopts.debug_warn = false;
-    }
-}
+pub const set_global_opts = util.set_global_opts;
 
 pub const CountConfig = struct {
     warmup_calls: u32 = 5_000,
@@ -128,7 +109,7 @@ pub const Study = struct {
         var this = Study{
             .env = .{ .alloc = alloc, .io = io },
             .name = name orelse "zmida",
-            .def = make_def(config, gopts.perf_level, args),
+            .def = make_def(config, util.gopts.perf_level, args),
             .trials = .init(alloc),
             .stats = .init(alloc),
         };
@@ -205,9 +186,9 @@ pub const Study = struct {
         }
         if (topts.with_perf) {
             try iface.writeByte('\n');
-            if (gopts.perf_level.cpu) try out.text_perf_cpu(iface, this.stats.items, opts);
+            if (util.gopts.perf_level.cpu) try out.text_perf_cpu(iface, this.stats.items, opts);
             try iface.writeByte('\n');
-            if (gopts.perf_level.mem) try out.text_perf_mem(iface, this.stats.items, opts);
+            if (util.gopts.perf_level.mem) try out.text_perf_mem(iface, this.stats.items, opts);
         }
     }
 
@@ -217,7 +198,7 @@ pub const Study = struct {
         const file = try util.get_file(this.env, fname, "-summary.csv");
         defer if (fname != null) file.close(this.env.io);
         var writer = file.writer(this.env.io, &.{});
-        try out.csv_summary(&writer.interface, this.stats.items, opts, gopts.perf_level);
+        try out.csv_summary(&writer.interface, this.stats.items, opts, util.gopts.perf_level);
     }
 
     pub fn write_samples(this: *@This(), fname: ?[]const u8, sopts: SamplesOpts) !void {
@@ -259,87 +240,9 @@ pub const PerfSample = struct {
     cpu_calls: u64 = 0,
     mem_calls: u64 = 0,
 
-    cpu: CpuCounters = .{},
-    memr: MemReadCounters = .{},
-    memw: MemWriteCounters = .{},
-};
-
-pub const CpuCounters = extern struct {
-    pub const events = [_]perf.Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
-    nrecords: u64 = 0,
-    time_enabled: u64 = 0,
-    time_running: u64 = 0,
-    instructions: u64 = 0,
-    cpu_cycles: u64 = 0,
-    branch_miss: u64 = 0,
-    branch_total: u64 = 0,
-    l1i_read_miss: u64 = 0,
-
-    pub fn init(ps: *const perf.Sample) CpuCounters {
-        return .{
-            .time_enabled = ps.enabled,
-            .time_running = ps.running,
-            .instructions = ps.records[0],
-            .cpu_cycles = ps.records[1],
-            .branch_miss = ps.records[2],
-            .branch_total = ps.records[3],
-            .l1i_read_miss = ps.records[4],
-        };
-    }
-
-    pub fn as_payload(this: *@This()) []u8 {
-        return @as([*]u8, @ptrCast(this))[0..@sizeOf(@This())];
-    }
-};
-
-pub const MemReadCounters = extern struct {
-    pub const events = [_]perf.Event{ .l1d_read, .l1d_read_miss, .ll_read, .ll_read_miss };
-    nrecords: u64 = 0,
-    time_enabled: u64 = 0,
-    time_running: u64 = 0,
-    l1d_read: u64 = 0,
-    l1d_read_miss: u64 = 0,
-    ll_read: u64 = 0,
-    ll_read_miss: u64 = 0,
-
-    pub fn init(ps: *const perf.Sample) CpuCounters {
-        return .{
-            .time_enabled = ps.enabled,
-            .time_running = ps.running,
-            .l1d_read = ps.record[0],
-            .l1d_read_miss = ps.record[1],
-            .ll_read = ps.record[2],
-            .ll_read_miss = ps.record[3],
-        };
-    }
-
-    pub fn as_payload(this: *@This()) []u8 {
-        return @as([*]u8, @ptrCast(this))[0..@sizeOf(@This())];
-    }
-};
-
-pub const MemWriteCounters = extern struct {
-    pub const events = [_]perf.Event{ .l1d_write, .ll_write, .ll_write_miss };
-    nrecords: u64 = 0,
-    time_enabled: u64 = 0,
-    time_running: u64 = 0,
-    l1d_write: u64 = 0,
-    ll_write: u64 = 0,
-    ll_write_miss: u64 = 0,
-
-    pub fn init(ps: *const perf.Sample) CpuCounters {
-        return .{
-            .time_enabled = ps.enabled,
-            .time_running = ps.running,
-            .l1d_write = ps.record[0],
-            .ll_write = ps.record[1],
-            .ll_write_miss = ps.record[2],
-        };
-    }
-
-    pub fn as_payload(this: *@This()) []u8 {
-        return @as([*]u8, @ptrCast(this))[0..@sizeOf(@This())];
-    }
+    cpu: perf.CpuCounters = .{},
+    memr: perf.MemReadCounters = .{},
+    memw: perf.MemWriteCounters = .{},
 };
 
 test {

@@ -89,12 +89,12 @@ pub const Trial = struct {
         this.data.clearRetainingCapacity();
         this.calls_per_sweep = util.argslen(args);
 
-        root.verbose(1, "Trial {s}", .{
+        util.verbose(1, "Trial {s}", .{
             this.name,
         });
 
         // warmup
-        root.verbose(1, " warmup {d}k calls", .{
+        util.verbose(1, " warmup {d}k calls", .{
             float_div(f64, this.def.count.warmup_sweeps * args.len, 1000),
         });
         dno(try runners.count_sample(
@@ -107,12 +107,12 @@ pub const Trial = struct {
         ));
 
         // timed
-        root.verbose(1, " samples {d} sweeps @ {d} calls", .{
+        util.verbose(1, " samples {d} sweeps @ {d} calls", .{
             this.def.count.trial_samples,
             this.def.count.sample_sweeps * this.calls_per_sweep,
         });
         for (0..this.def.count.trial_samples) |i| {
-            root.verbose(2, " {d}", i + 1);
+            util.verbose(2, " {d}", i + 1);
             var res = try runners.count_sample(
                 argstype,
                 this.env,
@@ -124,16 +124,16 @@ pub const Trial = struct {
             res.ord = i;
             try this.data.append(res);
         }
-        root.verbose(1, "\n", .{});
+        util.verbose(1, "\n", .{});
 
         // perf
         if (this.def.count.perf_level.cpu) {
-            root.verbose(
+            util.verbose(
                 1,
                 "Trial {s} cpu perf_events. {d} sweeps\n",
                 .{ this.name, this.def.count.perf_sweeps },
             );
-            var panel = try make_cpu_panel(this.env.alloc);
+            var panel = try util.make_cpu_panel(this.env.alloc);
             const res = try runners.count_sample(
                 argstype,
                 this.env,
@@ -148,12 +148,12 @@ pub const Trial = struct {
         }
 
         if (this.def.count.perf_level.mem) {
-            root.verbose(
+            util.verbose(
                 1,
                 "Trial {s} meme perf_events. {d} sweeps\n",
                 .{ this.name, this.def.count.perf_sweeps },
             );
-            var panel = try make_mem_panel(this.env.alloc);
+            var panel = try util.make_mem_panel(this.env.alloc);
             const res = try runners.count_sample(
                 argstype,
                 this.env,
@@ -175,10 +175,10 @@ pub const Trial = struct {
         this.data.clearRetainingCapacity();
         this.calls_per_sweep = args.len;
 
-        root.verbose(1, "Trial {s}", .{this.name});
+        util.verbose(1, "Trial {s}", .{this.name});
 
         // warmup
-        root.verbose(1, " warmup ({d:.3}ms)", .{
+        util.verbose(1, " warmup ({d:.3}ms)", .{
             float_div(f64, this.def.timed.warmup_nanos, 1e6),
         });
         dno(try runners.timed_sample(
@@ -190,11 +190,11 @@ pub const Trial = struct {
             args,
         ));
 
-        root.verbose(1, " samples @ {d:.3}ms", .{
+        util.verbose(1, " samples @ {d:.3}ms", .{
             float_div(f64, this.def.timed.sample_nanos, 1e6),
         });
         for (0..this.def.timed.trial_samples) |i| {
-            root.verbose(2, " {d}", i + 1);
+            util.verbose(2, " {d}", i + 1);
             var res = try runners.timed_sample(
                 argstype,
                 this.env,
@@ -206,16 +206,16 @@ pub const Trial = struct {
             res.ord = i;
             try this.data.append(res);
         }
-        root.verbose(1, "\n", .{});
+        util.verbose(1, "\n", .{});
 
         // perf
         if (this.def.timed.perf_level.cpu) {
-            root.verbose(
+            util.verbose(
                 1,
                 "Trial {s} cpu perf_events. {d} ns\n",
                 .{ this.name, this.def.timed.perf_nanos },
             );
-            var panel = try make_cpu_panel(this.env.alloc);
+            var panel = try util.make_cpu_panel(this.env.alloc);
             const res = try runners.timed_sample(
                 argstype,
                 this.env,
@@ -230,12 +230,12 @@ pub const Trial = struct {
         }
 
         if (this.def.timed.perf_level.mem) {
-            root.verbose(
+            util.verbose(
                 1,
                 "Trial {s} mem perf_events. {d} ns\n",
                 .{ this.name, this.def.timed.perf_nanos },
             );
-            var panel = try make_mem_panel(this.env.alloc);
+            var panel = try util.make_mem_panel(this.env.alloc);
             const res = try runners.timed_sample(
                 argstype,
                 this.env,
@@ -255,19 +255,6 @@ pub const Trial = struct {
         return .init(env.alloc, this);
     }
 };
-
-fn make_cpu_panel(alloc: Allocator) !PerfPanel {
-    var panel: PerfPanel = .init(alloc, true);
-    try panel.add(&root.CpuCounters.events);
-    return panel;
-}
-
-fn make_mem_panel(alloc: Allocator) !PerfPanel {
-    var panel: PerfPanel = .init(alloc, false);
-    try panel.add(&root.MemReadCounters.events);
-    try panel.add(&root.MemWriteCounters.events);
-    return panel;
-}
 
 test {
     _ = std.testing.refAllDecls(@This());
