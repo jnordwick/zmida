@@ -45,6 +45,8 @@ A lot of the top level functions have some comptime
 
 This are the next few thigs I want to work on:
 
+- cpu pinning
+- rdtsc default (implement fallback)
 - make some simple functions for most basic "bench this"
 - better documentation
 
@@ -116,7 +118,7 @@ is better with gnuplot, your help is greate appreciated. They do look better wit
 trials since the y-range is better then. Also, thinking of removing the min dot since
 that is what really messes things up.
 
-[[./gamma.svg]]
+[[./gamma.png]]
 
-[[./gamma-perf.svg]]
+[[./gamma-perf.png]]
 
