@@ -27,10 +27,13 @@ pub const GlobalOpts = struct {
     use_tsc: bool = false,
     perf_level: PerfLevel = .{},
 };
+var have_set_gopts: bool = false;
 
-pub var gopts = GlobalOpts{};
+var gopts = GlobalOpts{};
 
 pub fn set_global_opts(opts: GlobalOpts) void {
+    if (have_set_gopts) @panic("can only set global opts once");
+    have_set_gopts = true;
     gopts = opts;
     time.Clock.setup(if (gopts.use_tsc) .tsc else .monotonic);
     debug_warn();
@@ -49,10 +52,6 @@ pub inline fn debug_warn() void {
     }
 }
 
-// These are requested parameters exposed through the
-// study types. they are easier user facing. from these,
-// the argument list, and the environment, a definition
-// is made and passed to the trials.
 pub const CountConfig = struct {
     warmup_calls: u32 = 5_000,
     trial_samples: u32 = 10_000,
@@ -188,11 +187,6 @@ pub const Study = struct {
         verbose(1, "Generating stats for study {s}\n", this.name);
         for (this.trials.items) |*t| {
             const st = t.statistics(this.env);
-            // std.debug.print("\n", .{});
-            // std.debug.print("enabled {} running {}\n", .{ st.perf_time_enabled, st.perf_time_running });
-            // std.debug.print("instr {} cycles {}\n", .{ st.perf_cpu_cycles, st.perf_instructions });
-            // std.debug.print("branch miss {} total {}\n", .{ st.perf_branch_miss, st.perf_branch_total });
-            // std.debug.print("\n", .{});
             try this.stats.append(st);
         }
     }
@@ -203,10 +197,17 @@ pub const Study = struct {
         const file = try util.get_file(this.env, fname, ".txt");
         defer if (fname != null) file.close(this.env.io);
         var writer = file.writer(this.env.io, &.{});
+        const iface = &writer.interface;
         if (opts.mode == .lat) {
-            try out.text_latency(&writer.interface, this.name, this.stats.items, opts);
+            try out.text_latency(iface, this.name, this.stats.items, opts);
         } else {
-            try out.text_thruput(&writer.interface, this.name, this.stats.items, opts);
+            try out.text_thruput(iface, this.name, this.stats.items, opts);
+        }
+        if (topts.with_perf) {
+            try iface.writeByte('\n');
+            if (gopts.perf_level.cpu) try out.text_perf_cpu(iface, this.stats.items, opts);
+            try iface.writeByte('\n');
+            if (gopts.perf_level.mem) try out.text_perf_mem(iface, this.stats.items, opts);
         }
     }
 

@@ -31,7 +31,7 @@ pub fn main(init: std.process.Init) !void {
         &xx,
     );
     defer study.deinit();
-    try study.write_text(null, .{});
+    try study.write_text(null, .{ .mode = .thru });
     //try study.write_summary(null, .{ .separator = ' ' });
     //try study.write_gnuplot("example", .{});
 }
