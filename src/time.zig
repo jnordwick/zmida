@@ -1,8 +1,8 @@
 pub const std = @import("std");
-
 const clock_nanosleep = std.os.linux.clock_nanosleep;
 const clock_gettime = std.os.linux.clock_gettime;
 const timespec = std.os.linux.timespec;
+const tt = std.testing;
 
 pub const ClockSource = enum { monotonic, tsc };
 
@@ -160,8 +160,6 @@ pub fn tsc_stop() u64 {
 
     return (@as(u64, hi) << 32) | lo;
 }
-
-const tt = std.testing;
 
 test "alrefs" {
     _ = std.testing.refAllDecls(@This());

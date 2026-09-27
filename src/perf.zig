@@ -1,13 +1,15 @@
 const std = @import("std");
-const errno = @import("errno.zig");
 const ArrayList = std.array_list.Managed;
 const Allocator = std.mem.Allocator;
-
 const sys = std.os.linux;
 const fd_t = sys.fd_t;
 const pid_t = sys.pid_t;
 const PERF = sys.PERF;
 const perf_event_attr = sys.perf_event_attr;
+const tt = std.testing;
+
+const errno = @import("errno.zig");
+const now = @import("time.zig").now;
 
 pub const max_events = 8;
 
@@ -323,9 +325,6 @@ pub const PerfPanel = struct {
 // -----------
 // TEST
 // -----------
-
-const tt = std.testing;
-const now = @import("time.zig").now;
 
 fn workload(reps: u64) void {
     const dno = std.mem.doNotOptimizeAway;

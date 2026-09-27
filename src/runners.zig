@@ -1,19 +1,19 @@
 const std = @import("std");
-const gen = @import("gen.zig");
 const dno = std.mem.doNotOptimizeAway;
 const tt = std.testing;
 
 const ArgsType = @import("trial.zig").ArgsType;
+const gen = @import("gen.zig");
+const perf = @import("perf.zig");
+const PerfPanel = perf.PerfPanel;
+const Event = perf.Event;
 const root = @import("root.zig");
-const util = @import("util.zig");
 const Env = root.Env;
 const Sample = root.Sample;
 const MemSample = root.MemSample;
 const time = @import("time.zig");
 const Timer = time.Timer;
-const perf = @import("perf.zig");
-const PerfPanel = perf.PerfPanel;
-const Event = perf.Event;
+const util = @import("util.zig");
 
 const AtomicBool = std.atomic.Value(bool);
 

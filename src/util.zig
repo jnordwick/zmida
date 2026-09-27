@@ -1,12 +1,12 @@
 const std = @import("std");
 const tt = std.testing;
-const time = @import("time.zig");
 const Allocator = std.mem.Allocator;
-const perf = @import("perf.zig");
 
-const root = @import("root.zig");
 const ArgsType = @import("trial.zig").ArgsType;
+const perf = @import("perf.zig");
+const root = @import("root.zig");
 pub const Env = root.Env;
+const time = @import("time.zig");
 
 pub fn verbose(comptime lev: u32, comptime fmt: []const u8, p: anytype) void {
     if (lev <= gopts.verbose) {

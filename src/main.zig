@@ -12,8 +12,8 @@ pub fn main(init: std.process.Init) !void {
     const funcs = .{
         tgamma,
         lgamma,
-        //       tgamma,
-        //       lgamma,
+        tgamma,
+        lgamma,
     };
 
     zm.set_global_opts(.{
@@ -32,7 +32,6 @@ pub fn main(init: std.process.Init) !void {
     );
     defer study.deinit();
     try study.write_text(null, .{ .mode = .thru });
-    //try study.write_summary(null, .{ .separator = ' ' });
     try study.write_gnuplot("example", .{});
     try study.write_gnuplot_perf("example", .{});
 }

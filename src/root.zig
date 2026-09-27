@@ -1,23 +1,22 @@
 const std = @import("std");
-const perf = @import("perf.zig");
 const ArrayList = std.array_list.Managed;
 const ArgsTuple = std.meta.ArgsTuple;
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 
 const out = @import("out.zig");
+const perf = @import("perf.zig");
 const runners = @import("runners.zig");
 const stats = @import("stats.zig");
-const time = @import("time.zig");
-const util = @import("util.zig");
-const trial = @import("trial.zig");
-
 pub const TrialStats = stats.TrialStats;
+const time = @import("time.zig");
+const trial = @import("trial.zig");
 pub const Trial = trial.Trial;
 pub const TrialDef = trial.TrialDef;
-
+const util = @import("util.zig");
 const verbose = util.verbose;
 const debug_warn = util.debug_warn;
+pub const set_global_opts = util.set_global_opts;
 
 pub const PerfLevel = struct {
     cpu: bool = false,
@@ -30,8 +29,6 @@ pub const GlobalOpts = struct {
     use_tsc: bool = false,
     perf_level: PerfLevel = .{},
 };
-
-pub const set_global_opts = util.set_global_opts;
 
 pub const CountConfig = struct {
     warmup_calls: u32 = 5_000,

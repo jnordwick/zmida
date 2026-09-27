@@ -1,10 +1,12 @@
 const std = @import("std");
-const root = @import("root.zig");
-const util = @import("util.zig");
 const Allocator = std.mem.Allocator;
+const tt = std.testing;
+
+const root = @import("root.zig");
 const CpuCounters = root.CpuCounters;
 const MemReadCounters = root.MemReadCounters;
 const MemWriteCounters = root.MemWriteCounters;
+const util = @import("util.zig");
 const float_div = util.float_div;
 
 pub const TrialStats = struct {
@@ -130,8 +132,6 @@ fn percentiles(ss: []f64) [101]f64 {
 test "refalldecls" {
     std.testing.refAllDecls(@This());
 }
-
-const tt = std.testing;
 
 test percentiles {
     var arr: [1234]f64 = undefined;

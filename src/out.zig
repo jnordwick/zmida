@@ -1,9 +1,10 @@
 const std = @import("std");
-const root = @import("root.zig");
-const time = @import("time.zig");
-const float_div = @import("util.zig").float_div;
 const floor = std.math.floor;
 const log = std.math.log;
+
+const float_div = @import("util.zig").float_div;
+const root = @import("root.zig");
+const time = @import("time.zig");
 
 const text_header =
     \\study: {[name]s}

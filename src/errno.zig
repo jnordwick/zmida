@@ -1,3 +1,6 @@
+const std = @import("std");
+const tt = std.testing;
+
 fn to_usize(x: isize) usize {
     return @bitCast(x);
 }
@@ -290,9 +293,6 @@ pub inline fn chkerr(rc: usize) errno!usize {
     }
     return rc;
 }
-
-const std = @import("std");
-const tt = std.testing;
 
 test {
     try tt.expectEqual(@as(usize, 0), chkerr(0));
