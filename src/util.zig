@@ -25,7 +25,9 @@ pub fn set_global_opts(opts: root.GlobalOpts) void {
     if (have_set_gopts) @panic("can only set global opts once");
     have_set_gopts = true;
     gopts = opts;
-    time.Clock.setup(if (gopts.use_tsc) .tsc else .monotonic);
+    time.Clock.setup(if (gopts.use_tsc) .tsc else .monotonic) catch {
+        std.debug.print("!!! WARNING !!! No capable TSC. using monotonic.\n", .{});
+    };
     debug_warn();
 }
 

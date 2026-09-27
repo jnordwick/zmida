@@ -11,17 +11,29 @@ pub const Clock = struct {
     pub var hz: u64 = 1e9; // ticks per second
     pub var nspt: f64 = 1; // nanoseconds per tick
 
-    pub fn setup(clock_source: ClockSource) void {
-        clksrc = clock_source;
-        if (clksrc == .monotonic) {
-            hz = 1e9;
+    pub fn setup(clock_source: ClockSource) !void {
+        if (clock_source == .monotonic) {
+            set_monotonic();
+            return;
         } else {
-            if (!invariant_tsc()) @panic("system does not have invariant tsc");
+            errdefer set_monotonic();
+            if (!invariant_tsc()) return error.no_capable_tsc;
             const freq = get_tsc_freq();
-            if (freq == null) @panic("system does not expose tsc frequency");
-            hz = freq.?;
+            if (freq == null) return error.no_capable_tsc;
+            set_tsc(freq.?);
         }
+    }
+
+    fn set_tsc(freq: u64) void {
+        clksrc = .tsc;
+        hz = freq;
         nspt = 1e9 / @as(f64, @floatFromInt(hz));
+    }
+
+    fn set_monotonic() void {
+        clksrc = .monotonic;
+        hz = 1e9;
+        nspt = 1;
     }
 };
 
