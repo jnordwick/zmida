@@ -9,8 +9,6 @@ const perf_event_attr = sys.perf_event_attr;
 
 pub const max_events = 8;
 
-const PERF_IOC_FLAG_GROUP: usize = 1;
-
 pub const CpuCounters = extern struct {
     pub const events = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
     nrecords: u64 = 0,
@@ -227,17 +225,17 @@ pub const PerfProbe = struct {
 
     pub fn enable(this: *const @This()) !void {
         if (this.fds[0] == 0) return;
-        _ = try sys.ioctl(this.fds[0], PERF.EVENT_IOC.ENABLE, PERF_IOC_FLAG_GROUP);
+        _ = try sys.ioctl(this.fds[0], PERF.EVENT_IOC.ENABLE, sys.PERF_IOC_FLAG_GROUP);
     }
 
     pub fn disable(this: *const @This()) !void {
         if (this.fds[0] == 0) return;
-        _ = try sys.ioctl(this.fds[0], PERF.EVENT_IOC.DISABLE, PERF_IOC_FLAG_GROUP);
+        _ = try sys.ioctl(this.fds[0], PERF.EVENT_IOC.DISABLE, sys.PERF_IOC_FLAG_GROUP);
     }
 
     pub fn reset(this: *const @This()) !void {
         if (this.fds[0] == 0) return;
-        _ = try sys.ioctl(this.fds[0], PERF.EVENT_IOC.RESET, PERF_IOC_FLAG_GROUP);
+        _ = try sys.ioctl(this.fds[0], PERF.EVENT_IOC.RESET, sys.PERF_IOC_FLAG_GROUP);
     }
 
     pub fn read(this: *const @This(), buf: []u8) !void {

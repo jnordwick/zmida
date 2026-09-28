@@ -10,6 +10,8 @@ pub const id_t = i32;
 
 const errno = @import("errno.zig");
 
+pub const PERF_IOC_FLAG_GROUP: usize = 1;
+
 pub fn close(fd: fd_t) errno.errno!void {
     const rc = std.os.linux.close(fd);
     _ = try errno.chkerr(rc);
