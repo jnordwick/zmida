@@ -4,20 +4,22 @@ const ArgsTuple = std.meta.ArgsTuple;
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 
+pub const gen = @import("gen.zig");
 const out = @import("out.zig");
 const perf = @import("perf.zig");
 const runners = @import("runners.zig");
 const stats = @import("stats.zig");
-pub const TrialStats = stats.TrialStats;
 const time = @import("time.zig");
 const trial = @import("trial.zig");
+const util = @import("util.zig");
+
 pub const Trial = trial.Trial;
 pub const TrialDef = trial.TrialDef;
-const util = @import("util.zig");
-const verbose = util.verbose;
+pub const TrialStats = stats.TrialStats;
+
 const debug_warn = util.debug_warn;
+const verbose = util.verbose;
 pub const set_global_opts = util.set_global_opts;
-pub const gen = @import("gen.zig");
 
 pub const PerfLevel = struct {
     cpu: bool = false,
@@ -28,6 +30,8 @@ pub const GlobalOpts = struct {
     debug_warn: bool = true,
     verbose: u32 = 1,
     use_tsc: bool = true,
+    pin_cpu: ?u32 = null,
+    set_prio: ?i32 = null,
     perf_level: PerfLevel = .{},
 };
 

@@ -2,11 +2,15 @@ const std = @import("std");
 const tt = std.testing;
 const Allocator = std.mem.Allocator;
 
-const ArgsType = @import("trial.zig").ArgsType;
-const perf = @import("perf.zig");
 const root = @import("root.zig");
-pub const Env = root.Env;
+const perf = @import("perf.zig");
 const time = @import("time.zig");
+const sys = @import("sys.zig");
+
+const ArgsType = @import("trial.zig").ArgsType;
+
+pub var have_set_gopts: bool = false;
+pub var gopts = root.GlobalOpts{};
 
 pub fn verbose(comptime lev: u32, comptime fmt: []const u8, p: anytype) void {
     if (lev <= gopts.verbose) {
@@ -28,11 +32,29 @@ pub fn set_global_opts(opts: root.GlobalOpts) void {
     time.Clock.setup(if (gopts.use_tsc) .tsc else .monotonic) catch {
         std.debug.print("!!! WARNING !!! No capable TSC. using monotonic.\n", .{});
     };
+    if (gopts.pin_cpu) |cpu| {
+        const cpu_set: sys.cpu_set = .init(cpu);
+        sys.sched_setaffinity(0, &cpu_set) catch |e| {
+            panic("could not set cpu affinity to {}: {}\n", .{ cpu, e });
+        };
+        verbose(1, "set cpu affinity to {}\n", .{cpu});
+    }
+    if (gopts.set_prio) |prio| {
+        sys.setpriority(sys.PRIO.PROCESS, 0, prio) catch |e| {
+            panic("could not set priority (must be root for < 0) to {}: {}", .{ prio, e });
+        };
+        verbose(1, "set priority to {}\n", .{prio});
+    }
     debug_warn();
 }
 
-pub var have_set_gopts: bool = false;
-pub var gopts = root.GlobalOpts{};
+fn panic(comptime format: []const u8, args: anytype) noreturn {
+    var buffer: [512]u8 = undefined;
+    const str = std.fmt.bufPrint(&buffer, format, args) catch {
+        @panic("Could not create panic message");
+    };
+    @panic(str);
+}
 
 pub fn iround(x: f64) i64 {
     return @intFromFloat(@round(x));
@@ -134,7 +156,7 @@ pub fn get_fname(comptime func: anytype) []const u8 {
     return WhoAreYou(func).who;
 }
 
-pub fn get_file(env: Env, fname: ?[]const u8, suffix: []const u8) !std.Io.File {
+pub fn get_file(env: root.Env, fname: ?[]const u8, suffix: []const u8) !std.Io.File {
     if (fname == null) {
         return std.Io.File.stdout();
     }

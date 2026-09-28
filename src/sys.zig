@@ -75,19 +75,25 @@ pub const cpu_set = struct {
         this.mask = @splat(0);
     }
 
-    pub fn is_set(this: *const @This(), cpu: usize) bool {
+    pub fn init(x: u32) @This() {
+        var this: @This() = .{};
+        this.set(x);
+        return this;
+    }
+
+    pub fn is_set(this: *const @This(), cpu: u32) bool {
         const word_idx = cpu / 64;
         const bit_idx = @as(u6, @intCast(cpu % 64));
         return (this.mask[word_idx] & (@as(u64, 1) << bit_idx)) != 0;
     }
 
-    pub fn set(this: *@This(), cpu: usize) void {
+    pub fn set(this: *@This(), cpu: u32) void {
         const word_idx = cpu / 64;
         const bit_idx = @as(u6, @intCast(cpu % 64));
         this.mask[word_idx] |= (@as(u64, 1) << bit_idx);
     }
 
-    pub fn clear(this: *@This(), cpu: usize) void {
+    pub fn clear(this: *@This(), cpu: u32) void {
         const word_idx = cpu / 64;
         const bit_idx = @as(u6, @intCast(cpu % 64));
         this.mask[word_idx] &= ~(@as(u64, 1) << bit_idx);
