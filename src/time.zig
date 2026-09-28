@@ -10,9 +10,14 @@ pub const Clock = struct {
     pub var clksrc: ClockSource = .monotonic;
     pub var hz: u64 = 1e9; // ticks per second
     pub var nspt: f64 = 1; // nanoseconds per tick
+    pub var has_tsc: enum { unknown, yes, no } = .unknown;
 
     pub fn setup(clock_source: ClockSource) !void {
-        errdefer set_monotonic();
+        if (has_tsc != .unknown) return;
+        errdefer {
+            has_tsc = .no;
+            set_monotonic();
+        }
         if (clock_source == .monotonic) {
             set_monotonic();
             return;
@@ -20,6 +25,7 @@ pub const Clock = struct {
             if (!invariant_tsc()) return error.no_capable_tsc;
             const freq = get_tsc_freq();
             if (freq == null) return error.no_capable_tsc;
+            has_tsc = .yes;
             set_tsc(freq.?);
         }
     }

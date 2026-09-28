@@ -12,6 +12,14 @@ const errno = @import("errno.zig");
 
 pub const PERF_IOC_FLAG_GROUP: usize = 1;
 
+pub const PERF_FORMAT = struct {
+    pub const TOTAL_TIME_ENABLED: u64 = 1 << 0;
+    pub const TOTAL_TIME_RUNNING: u64 = 1 << 1;
+    pub const ID: u64 = 1 << 2;
+    pub const GROUP: u64 = 1 << 3;
+    pub const LOST: u64 = 1 << 4;
+};
+
 pub fn close(fd: fd_t) errno.errno!void {
     const rc = std.os.linux.close(fd);
     _ = try errno.chkerr(rc);

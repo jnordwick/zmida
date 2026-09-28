@@ -27,7 +27,7 @@ pub const PerfLevel = struct {
 pub const GlobalOpts = struct {
     debug_warn: bool = true,
     verbose: u32 = 1,
-    use_tsc: bool = false,
+    use_tsc: bool = true,
     perf_level: PerfLevel = .{},
 };
 

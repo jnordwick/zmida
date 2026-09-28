@@ -6,7 +6,6 @@ pub fn main(init: std.process.Init) !void {
     const xx = zm.gen.uniform(f64, 100, 0, 10, 0);
 
     zm.set_global_opts(.{
-        .use_tsc = true,
         .perf_level = .{ .cpu = true },
     });
     const config: zm.Config = .bytime(.{});
@@ -20,8 +19,8 @@ pub fn main(init: std.process.Init) !void {
     );
     defer study.deinit();
     try study.write_text(null, .{ .mode = .lat });
-    try study.write_gnuplot("gamma", .{});
-    try study.write_gnuplot_perf("gamma", .{});
+    //try study.write_gnuplot("gamma", .{});
+    //try study.write_gnuplot_perf("gamma", .{});
 }
 
 fn lgamma(x: f64) f64 {

@@ -172,9 +172,9 @@ pub const PerfProbe = struct {
         if (this.nevents == 0) return;
         errdefer this.close();
 
-        const format = PERF_FORMAT.GROUP |
-            PERF_FORMAT.TOTAL_TIME_ENABLED |
-            PERF_FORMAT.TOTAL_TIME_RUNNING;
+        const format = sys.PERF_FORMAT.GROUP |
+            sys.PERF_FORMAT.TOTAL_TIME_ENABLED |
+            sys.PERF_FORMAT.TOTAL_TIME_RUNNING;
 
         var leader: perf_event_attr = .{
             .type = this.events[0].typ,
@@ -242,14 +242,6 @@ pub const PerfProbe = struct {
         const r = try std.posix.read(this.fds[0], buf);
         std.debug.assert(r == buf.len);
     }
-};
-
-const PERF_FORMAT = struct {
-    pub const TOTAL_TIME_ENABLED: u64 = 1 << 0;
-    pub const TOTAL_TIME_RUNNING: u64 = 1 << 1;
-    pub const ID: u64 = 1 << 2;
-    pub const GROUP: u64 = 1 << 3;
-    pub const LOST: u64 = 1 << 4;
 };
 
 pub const PerfPanel = struct {
