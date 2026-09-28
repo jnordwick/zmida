@@ -354,36 +354,42 @@ fn setpriority(which: i32, who: u32, prio: i32) !void {
 }
 
 const cpu_set = struct {
-    set: cpu_set_t = @splat(0),
+    mask: cpu_set_t = @splat(0),
+
     pub fn zero(this: *@This()) void {
-        this.set = @splat(0);
+        this.mask = @splat(0);
     }
+
     pub fn is_set(this: *const @This(), cpu: usize) bool {
         const word_idx = cpu / 64;
         const bit_idx = @as(u6, @intCast(cpu % 64));
-        return (this.set[word_idx] & (@as(u64, 1) << bit_idx)) != 0;
+        return (this.mask[word_idx] & (@as(u64, 1) << bit_idx)) != 0;
     }
 
-    pub fn set_core(this: *@This(), cpu: usize) void {
+    pub fn set(this: *@This(), cpu: usize) void {
         const word_idx = cpu / 64;
         const bit_idx = @as(u6, @intCast(cpu % 64));
-        this.set[word_idx] |= (@as(u64, 1) << bit_idx);
+        this.mask[word_idx] |= (@as(u64, 1) << bit_idx);
     }
 
     pub fn clear(this: *@This(), cpu: usize) void {
         const word_idx = cpu / 64;
         const bit_idx = @as(u6, @intCast(cpu % 64));
-        this.set[word_idx] &= ~(@as(u64, 1) << bit_idx);
+        this.mask[word_idx] &= ~(@as(u64, 1) << bit_idx);
+    }
+
+    pub fn set_all(this: *@This()) void {
+        this.mask = @splat(@as(u64, @bitCast(@as(i64, -1))));
     }
 };
 
 fn sched_setaffinity(pid: pid_t, set: *const cpu_set) !void {
-    const size = @sizeOf(@TypeOf(set.set));
+    const size = @sizeOf(@TypeOf(set.mask));
     const rc = std.os.linux.syscall3(
         .sched_setaffinity,
         @as(u32, @bitCast(pid)),
         size,
-        @intFromPtr(set.set),
+        @intFromPtr(&set.mask),
     );
     _ = try errno.chkerr(rc);
 }
@@ -393,7 +399,7 @@ pub fn sched_getaffinity(pid: i32, mask: *cpu_set) !void {
         .sched_getaffinity,
         @bitCast(@as(isize, pid)),
         @sizeOf(cpu_set_t),
-        @intFromPtr(&mask.set),
+        @intFromPtr(&mask.mask),
     );
 
     // Decodes using your fast custom error-handling layer
@@ -449,13 +455,22 @@ test "get/set-priority" {
     try std.testing.expect(r == 10);
 }
 
-test "getaffinity-self" {
-    var current_mask: cpu_set = .{};
-    try sched_getaffinity(0, &current_mask);
-    var has_any_core = false;
-    for (0..64) |i| {
-        if (current_mask.is_set(i)) has_any_core = true;
-    }
+test "get/set-affinity" {
+    var curmask: cpu_set = .{};
+    try sched_getaffinity(0, &curmask);
+    const counts1 = @popCount(curmask.mask[0]) + @popCount(curmask.mask[1]);
 
-    try tt.expect(has_any_core);
+    var mask: cpu_set = .{};
+    mask.set(0);
+    try sched_setaffinity(0, &mask);
+
+    try sched_getaffinity(0, &curmask);
+    const counts2 = @popCount(curmask.mask[0]) + @popCount(curmask.mask[1]);
+    try tt.expectEqual(@as(usize, 1), counts2);
+
+    mask.set_all();
+    try sched_setaffinity(0, &mask);
+    try sched_getaffinity(0, &curmask);
+    const counts3 = @popCount(curmask.mask[0]) + @popCount(curmask.mask[1]);
+    try tt.expectEqual(@as(usize, counts1), counts3);
 }
