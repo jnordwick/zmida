@@ -1,16 +1,11 @@
 const std = @import("std");
 const ArrayList = std.array_list.Managed;
 const Allocator = std.mem.Allocator;
-const sys = std.os.linux;
+
+const sys = @import("sys.zig");
 const fd_t = sys.fd_t;
-const pid_t = sys.pid_t;
 const PERF = sys.PERF;
 const perf_event_attr = sys.perf_event_attr;
-const cpu_set_t = sys.cpu_set_t;
-const tt = std.testing;
-
-const errno = @import("errno.zig");
-const now = @import("time.zig").now;
 
 pub const max_events = 8;
 
@@ -93,6 +88,10 @@ pub const MemWriteCounters = extern struct {
         return @as([*]u8, @ptrCast(this))[0..@sizeOf(@This())];
     }
 };
+
+// ---------
+// perf_open
+// ---------
 
 pub const Event = struct {
     const HW = PERF.COUNT.HW;
@@ -193,7 +192,7 @@ pub const PerfProbe = struct {
             .clockid = .MONOTONIC_RAW,
             .read_format = format,
         };
-        this.fds[0] = try perf_event_open(&leader, 0, -1, -1, 0);
+        this.fds[0] = try sys.perf_event_open(&leader, 0, -1, -1, 0);
 
         for (1..this.nevents) |i| {
             var rest: perf_event_attr = .{
@@ -207,7 +206,7 @@ pub const PerfProbe = struct {
                 },
                 .clockid = .MONOTONIC_RAW,
             };
-            this.fds[i] = try perf_event_open(&rest, 0, -1, this.fds[0], 0);
+            this.fds[i] = try sys.perf_event_open(&rest, 0, -1, this.fds[0], 0);
         }
         try this.reset();
     }
@@ -216,7 +215,7 @@ pub const PerfProbe = struct {
         this.disable() catch {};
         for (0..this.nevents) |i| {
             if (this.fds[i] != 0) {
-                close_os(this.fds[i]) catch {};
+                sys.close(this.fds[i]) catch {};
                 this.fds[i] = 0;
             }
         }
@@ -228,17 +227,17 @@ pub const PerfProbe = struct {
 
     pub fn enable(this: *const @This()) !void {
         if (this.fds[0] == 0) return;
-        _ = try ioctl(this.fds[0], PERF.EVENT_IOC.ENABLE, PERF_IOC_FLAG_GROUP);
+        _ = try sys.ioctl(this.fds[0], PERF.EVENT_IOC.ENABLE, PERF_IOC_FLAG_GROUP);
     }
 
     pub fn disable(this: *const @This()) !void {
         if (this.fds[0] == 0) return;
-        _ = try ioctl(this.fds[0], PERF.EVENT_IOC.DISABLE, PERF_IOC_FLAG_GROUP);
+        _ = try sys.ioctl(this.fds[0], PERF.EVENT_IOC.DISABLE, PERF_IOC_FLAG_GROUP);
     }
 
     pub fn reset(this: *const @This()) !void {
         if (this.fds[0] == 0) return;
-        _ = try ioctl(this.fds[0], PERF.EVENT_IOC.RESET, PERF_IOC_FLAG_GROUP);
+        _ = try sys.ioctl(this.fds[0], PERF.EVENT_IOC.RESET, PERF_IOC_FLAG_GROUP);
     }
 
     pub fn read(this: *const @This(), buf: []u8) !void {
@@ -254,27 +253,6 @@ const PERF_FORMAT = struct {
     pub const GROUP: u64 = 1 << 3;
     pub const LOST: u64 = 1 << 4;
 };
-
-fn ioctl(fd: fd_t, request: u32, args: usize) errno.errno!usize {
-    const rc = std.os.linux.ioctl(fd, request, args);
-    return @intCast(try errno.chkerr(rc));
-}
-
-fn perf_event_open(
-    attr: *sys.perf_event_attr,
-    pid: pid_t,
-    cpu: i32,
-    group: fd_t,
-    flags: usize,
-) errno.errno!fd_t {
-    const rc = sys.perf_event_open(attr, pid, cpu, group, flags);
-    return @intCast(try errno.chkerr(rc));
-}
-
-fn close_os(fd: fd_t) errno.errno!void {
-    const rc = std.os.linux.close(fd);
-    _ = try errno.chkerr(rc);
-}
 
 pub const PerfPanel = struct {
     const This = @This();
@@ -324,89 +302,6 @@ pub const PerfPanel = struct {
 };
 
 // -----------
-// Priority
-// ----------
-
-pub const PRIO = struct {
-    pub const PROCESS: i32 = 0;
-    pub const PGRP: i32 = 1;
-    pub const USER: i32 = 2;
-};
-
-fn getpriority(which: i32, who: u32) !i32 {
-    const rc = std.os.linux.syscall2(
-        .getpriority,
-        @bitCast(@as(isize, which)),
-        @as(usize, who),
-    );
-    const prio = try errno.chkerr(rc);
-    return 20 - @as(i32, @intCast(@as(u32, @truncate(prio))));
-}
-
-fn setpriority(which: i32, who: u32, prio: i32) !void {
-    const rc = std.os.linux.syscall3(
-        .setpriority,
-        @bitCast(@as(isize, which)),
-        @as(usize, who),
-        @bitCast(@as(isize, prio)),
-    );
-    _ = try errno.chkerr(rc);
-}
-
-const cpu_set = struct {
-    mask: cpu_set_t = @splat(0),
-
-    pub fn zero(this: *@This()) void {
-        this.mask = @splat(0);
-    }
-
-    pub fn is_set(this: *const @This(), cpu: usize) bool {
-        const word_idx = cpu / 64;
-        const bit_idx = @as(u6, @intCast(cpu % 64));
-        return (this.mask[word_idx] & (@as(u64, 1) << bit_idx)) != 0;
-    }
-
-    pub fn set(this: *@This(), cpu: usize) void {
-        const word_idx = cpu / 64;
-        const bit_idx = @as(u6, @intCast(cpu % 64));
-        this.mask[word_idx] |= (@as(u64, 1) << bit_idx);
-    }
-
-    pub fn clear(this: *@This(), cpu: usize) void {
-        const word_idx = cpu / 64;
-        const bit_idx = @as(u6, @intCast(cpu % 64));
-        this.mask[word_idx] &= ~(@as(u64, 1) << bit_idx);
-    }
-
-    pub fn set_all(this: *@This()) void {
-        this.mask = @splat(@as(u64, @bitCast(@as(i64, -1))));
-    }
-};
-
-fn sched_setaffinity(pid: pid_t, set: *const cpu_set) !void {
-    const size = @sizeOf(@TypeOf(set.mask));
-    const rc = std.os.linux.syscall3(
-        .sched_setaffinity,
-        @as(u32, @bitCast(pid)),
-        size,
-        @intFromPtr(&set.mask),
-    );
-    _ = try errno.chkerr(rc);
-}
-
-pub fn sched_getaffinity(pid: i32, mask: *cpu_set) !void {
-    const rc = std.os.linux.syscall3(
-        .sched_getaffinity,
-        @bitCast(@as(isize, pid)),
-        @sizeOf(cpu_set_t),
-        @intFromPtr(&mask.mask),
-    );
-
-    // Decodes using your fast custom error-handling layer
-    _ = try errno.chkerr(rc);
-}
-
-// -----------
 // TEST
 // -----------
 
@@ -424,7 +319,7 @@ test {
     const events1 = [_]Event{ .l1d_read, .l1d_read_miss, .ll_read, .ll_read_miss };
     const events2 = [_]Event{ .l1d_write, .ll_write, .ll_write_miss };
 
-    var ps: PerfPanel = .init(tt.allocator, false);
+    var ps: PerfPanel = .init(std.testing.allocator, false);
     try ps.add(&events0);
     try ps.add(&events1);
     try ps.add(&events2);
@@ -447,30 +342,4 @@ test {
     std.debug.print("{any}\n", .{samp});
 
     ps.deinit();
-}
-
-test "get/set-priority" {
-    try setpriority(PRIO.PROCESS, 0, 10);
-    const r = try getpriority(PRIO.PROCESS, 0);
-    try std.testing.expect(r == 10);
-}
-
-test "get/set-affinity" {
-    var curmask: cpu_set = .{};
-    try sched_getaffinity(0, &curmask);
-    const counts1 = @popCount(curmask.mask[0]) + @popCount(curmask.mask[1]);
-
-    var mask: cpu_set = .{};
-    mask.set(0);
-    try sched_setaffinity(0, &mask);
-
-    try sched_getaffinity(0, &curmask);
-    const counts2 = @popCount(curmask.mask[0]) + @popCount(curmask.mask[1]);
-    try tt.expectEqual(@as(usize, 1), counts2);
-
-    mask.set_all();
-    try sched_setaffinity(0, &mask);
-    try sched_getaffinity(0, &curmask);
-    const counts3 = @popCount(curmask.mask[0]) + @popCount(curmask.mask[1]);
-    try tt.expectEqual(@as(usize, counts1), counts3);
 }
