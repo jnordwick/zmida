@@ -12,11 +12,11 @@ pub const Clock = struct {
     pub var nspt: f64 = 1; // nanoseconds per tick
 
     pub fn setup(clock_source: ClockSource) !void {
+        errdefer set_monotonic();
         if (clock_source == .monotonic) {
             set_monotonic();
             return;
         } else {
-            errdefer set_monotonic();
             if (!invariant_tsc()) return error.no_capable_tsc;
             const freq = get_tsc_freq();
             if (freq == null) return error.no_capable_tsc;

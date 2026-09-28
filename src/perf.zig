@@ -6,6 +6,7 @@ const fd_t = sys.fd_t;
 const pid_t = sys.pid_t;
 const PERF = sys.PERF;
 const perf_event_attr = sys.perf_event_attr;
+const cpu_set_t = sys.cpu_set_t;
 const tt = std.testing;
 
 const errno = @import("errno.zig");
@@ -323,6 +324,83 @@ pub const PerfPanel = struct {
 };
 
 // -----------
+// Priority
+// ----------
+
+pub const PRIO = struct {
+    pub const PROCESS: i32 = 0;
+    pub const PGRP: i32 = 1;
+    pub const USER: i32 = 2;
+};
+
+fn getpriority(which: i32, who: u32) !i32 {
+    const rc = std.os.linux.syscall2(
+        .getpriority,
+        @bitCast(@as(isize, which)),
+        @as(usize, who),
+    );
+    const prio = try errno.chkerr(rc);
+    return 20 - @as(i32, @intCast(@as(u32, @truncate(prio))));
+}
+
+fn setpriority(which: i32, who: u32, prio: i32) !void {
+    const rc = std.os.linux.syscall3(
+        .setpriority,
+        @bitCast(@as(isize, which)),
+        @as(usize, who),
+        @bitCast(@as(isize, prio)),
+    );
+    _ = try errno.chkerr(rc);
+}
+
+const cpu_set = struct {
+    set: cpu_set_t = @splat(0),
+    pub fn zero(this: *@This()) void {
+        this.set = @splat(0);
+    }
+    pub fn is_set(this: *const @This(), cpu: usize) bool {
+        const word_idx = cpu / 64;
+        const bit_idx = @as(u6, @intCast(cpu % 64));
+        return (this.set[word_idx] & (@as(u64, 1) << bit_idx)) != 0;
+    }
+
+    pub fn set_core(this: *@This(), cpu: usize) void {
+        const word_idx = cpu / 64;
+        const bit_idx = @as(u6, @intCast(cpu % 64));
+        this.set[word_idx] |= (@as(u64, 1) << bit_idx);
+    }
+
+    pub fn clear(this: *@This(), cpu: usize) void {
+        const word_idx = cpu / 64;
+        const bit_idx = @as(u6, @intCast(cpu % 64));
+        this.set[word_idx] &= ~(@as(u64, 1) << bit_idx);
+    }
+};
+
+fn sched_setaffinity(pid: pid_t, set: *const cpu_set) !void {
+    const size = @sizeOf(@TypeOf(set.set));
+    const rc = std.os.linux.syscall3(
+        .sched_setaffinity,
+        @as(u32, @bitCast(pid)),
+        size,
+        @intFromPtr(set.set),
+    );
+    _ = try errno.chkerr(rc);
+}
+
+pub fn sched_getaffinity(pid: i32, mask: *cpu_set) !void {
+    const rc = std.os.linux.syscall3(
+        .sched_getaffinity,
+        @bitCast(@as(isize, pid)),
+        @sizeOf(cpu_set_t),
+        @intFromPtr(&mask.set),
+    );
+
+    // Decodes using your fast custom error-handling layer
+    _ = try errno.chkerr(rc);
+}
+
+// -----------
 // TEST
 // -----------
 
@@ -363,4 +441,21 @@ test {
     std.debug.print("{any}\n", .{samp});
 
     ps.deinit();
+}
+
+test "get/set-priority" {
+    try setpriority(PRIO.PROCESS, 0, 10);
+    const r = try getpriority(PRIO.PROCESS, 0);
+    try std.testing.expect(r == 10);
+}
+
+test "getaffinity-self" {
+    var current_mask: cpu_set = .{};
+    try sched_getaffinity(0, &current_mask);
+    var has_any_core = false;
+    for (0..64) |i| {
+        if (current_mask.is_set(i)) has_any_core = true;
+    }
+
+    try tt.expect(has_any_core);
 }
