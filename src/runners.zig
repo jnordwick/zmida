@@ -170,6 +170,7 @@ test "count_sample slice naked" {
     const t = try count_sample(
         .slice_naked,
         env,
+        null,
         3,
         std.math.sin,
         args_slice,
@@ -183,6 +184,7 @@ test "count_sample single tuple" {
     const t = try count_sample(
         .single_tuple,
         env,
+        null,
         30,
         std.math.sin,
         .{arg},
@@ -223,6 +225,7 @@ test "count_sample generator" {
     const t = try count_sample(
         .generator,
         env,
+        null,
         5,
         std.math.sin,
         arg,
@@ -239,7 +242,7 @@ test "count_sample nil" {
             return std.math.sin(x);
         }
     }.sin45;
-    const t = try count_sample(.niladic, env, 30, func, {});
+    const t = try count_sample(.niladic, env, null, 30, func, {});
     try tt.expect(t.calls == 30);
 }
 
@@ -252,6 +255,7 @@ test "count_samples multiple" {
     const t = try count_sample(
         .slice_tuple,
         env,
+        null,
         3,
         std.math.log,
         args_slice,
@@ -267,6 +271,7 @@ test "timed_samples single" {
     const t = try timed_sample(
         .slice_naked,
         env,
+        null,
         50 * 1000 * 1000,
         std.math.sin,
         args_slice,
@@ -285,7 +290,7 @@ test "timed_sample nil" {
             return std.math.sin(x);
         }
     }.sin45;
-    const t = try timed_sample(.niladic, env, 10 * 1e6, func, {});
+    const t = try timed_sample(.niladic, env, null, 10 * 1e6, func, {});
     try tt.expect(t.calls > 100);
 }
 
@@ -295,6 +300,7 @@ test "timed_sample single tuple" {
     const t = try timed_sample(
         .single_tuple,
         env,
+        null,
         5 * 1e6,
         std.math.sin,
         .{arg},
@@ -311,6 +317,7 @@ test "timed_samples multiple" {
     const t = try timed_sample(
         .slice_tuple,
         env,
+        null,
         50 * 1000 * 1000,
         std.math.log,
         args_slice,

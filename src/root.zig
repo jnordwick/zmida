@@ -115,6 +115,7 @@ pub const Study = struct {
             .trials = .init(alloc),
             .stats = .init(alloc),
         };
+        errdefer this.deinit();
         verbose(1, "Running study {s}\n", this.name);
         switch (config) {
             .count => |c| {

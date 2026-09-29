@@ -199,7 +199,7 @@ test pause_until {
     const start = now();
     pause_until(start + sleep_time);
     const stop = now();
-    const diff = @abs(@as(i66, @intCast(stop - start)) - @as(i64, @intCast(sleep_time)));
+    const diff = @abs(@as(i64, @intCast(stop - start)) - @as(i64, @intCast(sleep_time)));
     try tt.expect(diff < 1000 * 1000);
 }
 

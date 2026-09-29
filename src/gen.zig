@@ -32,6 +32,7 @@ pub fn tie2t(comptime T: type, comptime n: u64, x: [n]T, y: [n]T) [n]struct { co
     return arr;
 }
 
+// for ints
 pub fn Range(T: type) type {
     return struct {
         pub const _zmida_generator_ = true;
@@ -61,6 +62,7 @@ pub fn Range(T: type) type {
     };
 }
 
+// for floats
 pub fn LinSpace(T: type) type {
     return struct {
         pub const _zmida_generator_ = true;
