@@ -45,6 +45,9 @@ pub fn set_global_opts(opts: root.GlobalOpts) void {
         };
         verbose(1, "set priority to {}\n", .{prio});
     }
+    if (root.GlobalOpts.call_mod != .auto) {
+        verbose(1, "overriding @call modifier {}\n", .{root.GlobalOpts.call_mod});
+    }
     debug_warn();
 }
 

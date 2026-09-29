@@ -25,7 +25,7 @@ const events_memw = [_]Event{ .l1d_write, .ll_write, .ll_write_miss };
 
 inline fn call(func: anytype, arg: anytype) void {
     dno(&arg);
-    dno(@call(.auto, func, arg));
+    dno(@call(root.GlobalOpts.call_mod, func, arg));
 }
 
 inline fn sweep(comptime argstype: ArgsType, func: anytype, args: anytype) void {
@@ -65,7 +65,8 @@ inline fn count_loop(
     }
 }
 
-pub fn count_sample(
+// noinline because I want the same code path warmed up
+pub noinline fn count_sample(
     comptime argstype: ArgsType,
     _: Env,
     panel: ?*PerfPanel,
@@ -114,7 +115,8 @@ pub fn set_bool(start: *AtomicBool, stop: *AtomicBool, nanos: u64) void {
     stop.store(true, .release);
 }
 
-pub fn timed_sample(
+// noinline because i want the same code path warmed up.
+pub noinline fn timed_sample(
     comptime argstype: ArgsType,
     _: Env,
     panel: ?*PerfPanel,

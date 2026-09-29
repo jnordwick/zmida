@@ -1,6 +1,8 @@
 const std = @import("std");
 const zm = @import("zmida");
 
+pub const zmida_call_mod = std.builtin.CallModifier.always_inline;
+
 pub fn main(init: std.process.Init) !void {
     const funcs = .{ logtgamma, lgamma, logtgamma, lgamma };
     const xx = zm.gen.uniform(f64, 100, 0, 10, 0);

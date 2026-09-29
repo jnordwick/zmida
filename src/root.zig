@@ -27,6 +27,11 @@ pub const PerfLevel = struct {
 };
 
 pub const GlobalOpts = struct {
+    pub const call_mod: std.builtin.CallModifier = b: {
+        const that = @import("root");
+        const ne = @hasDecl(that, "zmida_call_mod");
+        break :b if (ne) that.zmida_call_mod else .auto;
+    };
     debug_warn: bool = true,
     verbose: u32 = 1,
     use_tsc: bool = true,
