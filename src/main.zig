@@ -2,11 +2,13 @@ const std = @import("std");
 const zm = @import("zmida");
 
 pub fn main(init: std.process.Init) !void {
-    const funcs = .{ logtgamma, lgamma };
+    const funcs = .{ logtgamma, lgamma, logtgamma, lgamma };
     const xx = zm.gen.uniform(f64, 100, 0, 10, 0);
 
     zm.set_global_opts(.{
         .perf_level = .{ .cpu = true },
+        // .pin_cpu = 1,
+        // .set_prio = -5,
     });
     const config: zm.Config = .bytime(.{});
     var study = try zm.Study.run(
@@ -18,8 +20,8 @@ pub fn main(init: std.process.Init) !void {
         &xx,
     );
     defer study.deinit();
-    try study.write_text(null, .{ .mode = .lat });
-    //try study.write_gnuplot("gamma", .{});
+    try study.write_text(null, .{ .mode = .thru });
+    try study.write_gnuplot("ex", .{});
     //try study.write_gnuplot_perf("gamma", .{});
 }
 

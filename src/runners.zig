@@ -2,18 +2,20 @@ const std = @import("std");
 const dno = std.mem.doNotOptimizeAway;
 const tt = std.testing;
 
-const ArgsType = @import("trial.zig").ArgsType;
+const root = @import("root.zig");
 const gen = @import("gen.zig");
 const perf = @import("perf.zig");
+const time = @import("time.zig");
+const util = @import("util.zig");
+const sys = @import("sys.zig");
+const ArgsType = @import("trial.zig").ArgsType;
+
+const Sample = root.Sample;
+const Env = root.Env;
 const PerfPanel = perf.PerfPanel;
 const Event = perf.Event;
-const root = @import("root.zig");
-const Env = root.Env;
-const Sample = root.Sample;
-const MemSample = root.MemSample;
-const time = @import("time.zig");
 const Timer = time.Timer;
-const util = @import("util.zig");
+const MemSample = root.MemSample;
 
 const AtomicBool = std.atomic.Value(bool);
 
@@ -128,6 +130,8 @@ pub fn timed_sample(
         set_bool,
         .{ &start, &done, nanos },
     ) catch @panic("could not spawn");
+    const tid: sys.id_t = @intCast(timer_thread.getHandle());
+    try sys.setpriority(.PROCESS, tid, 10);
     var timer: Timer = undefined;
     if (panel) |p| {
         try p.open();

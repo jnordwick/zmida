@@ -78,6 +78,10 @@ pub const Trial = struct {
     }
 
     pub fn run(this: *@This(), func: anytype, args: anytype) !void {
+        try this.data.ensureTotalCapacity(this.def.timed.trial_samples);
+        this.data.clearRetainingCapacity();
+        this.calls_per_sweep = util.argslen(args);
+
         switch (this.def) {
             .count => try this.bycount(func, args),
             .timed => try this.bytimed(func, args),
@@ -86,17 +90,13 @@ pub const Trial = struct {
 
     pub fn bycount(this: *@This(), func: anytype, args: anytype) !void {
         const argstype = util.argstype_of(@TypeOf(args));
-        try this.data.ensureTotalCapacity(this.def.count.trial_samples);
-        this.data.clearRetainingCapacity();
-        this.calls_per_sweep = util.argslen(args);
-
         util.verbose(1, "Trial {s}", .{
             this.name,
         });
 
         // warmup
         util.verbose(1, " warmup {d}k calls", .{
-            float_div(f64, this.def.count.warmup_sweeps * args.len, 1000),
+            float_div(f64, this.def.count.warmup_sweeps * this.calls_per_sweep, 1000),
         });
         dno(try runners.count_sample(
             argstype,
@@ -172,10 +172,6 @@ pub const Trial = struct {
 
     pub fn bytimed(this: *@This(), func: anytype, args: anytype) !void {
         const argstype = util.argstype_of(@TypeOf(args));
-        try this.data.ensureTotalCapacity(this.def.timed.trial_samples);
-        this.data.clearRetainingCapacity();
-        this.calls_per_sweep = args.len;
-
         util.verbose(1, "Trial {s}", .{this.name});
 
         // warmup

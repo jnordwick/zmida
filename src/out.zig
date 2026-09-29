@@ -482,15 +482,13 @@ pub fn gnuplot(
 ) !void {
     const suite_title = opts.title orelse "zmida";
     const units = "Kops/sec";
-    // ascending percentiles, matching template.gp's header comment (p0 p10 p25 p50 p75 p90 p100)
     const pctiles = [_]u32{ 0, 10, 25, 50, 75, 90, 100 };
 
     try writer.print("$Data << EOD\n", .{});
     for (trials) |t| {
         try writer.print("{[name]s} {[mean]d:.4}", .{ .name = t.trial.name, .mean = 1e6 / t.call_avg_ns });
         for (pctiles) |p| {
-            // percentiles[] is stored descending, so ascending percentile p is at index (100 - p)
-            try writer.print(" {d:.4}", .{1e6 / t.percentiles[100 - p]});
+            try writer.print(" {d:.4}", .{1e6 / t.percentiles[p]});
         }
         try writer.writeByte('\n');
     }

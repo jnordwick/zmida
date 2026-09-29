@@ -133,8 +133,8 @@ pub fn sched_getaffinity(pid: i32, mask: *cpu_set) !void {
 
 test "get/set-priority" {
     const V: i32 = 15;
-    try setpriority(PRIO.PROCESS, 0, V);
-    const r = try getpriority(PRIO.PROCESS, 0);
+    try setpriority(.PROCESS, 0, V);
+    const r = try getpriority(.PROCESS, 0);
     try std.testing.expectEqual(V, r);
 }
 

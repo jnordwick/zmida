@@ -43,10 +43,10 @@ pub const CountConfig = struct {
 };
 
 pub const TimedConfig = struct {
-    warmup_millis: u32 = 500,
+    warmup_millis: u32 = 1000,
     trial_samples: u32 = 200,
-    trial_millis: u32 = 3000,
-    perf_millis: u32 = 1500,
+    trial_millis: u32 = 4000,
+    perf_millis: u32 = 1000,
 };
 
 pub const Config = union(enum) {
@@ -154,10 +154,11 @@ pub const Study = struct {
                 } };
             },
             .timed => |c| {
+                const millis: u64 = @intCast(c.trial_millis);
                 return .{ .timed = .{
                     .warmup_nanos = c.warmup_millis * 1_000_000,
                     .trial_samples = c.trial_samples,
-                    .sample_nanos = util.idiv_up(u64, c.trial_millis * 1_000_000, c.trial_samples),
+                    .sample_nanos = util.idiv_up(u64, millis * 1_000_000, c.trial_samples),
                     .perf_nanos = c.perf_millis * 1_000_000,
                     .perf_level = plevel,
                 } };
