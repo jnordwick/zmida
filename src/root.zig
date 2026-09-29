@@ -44,9 +44,9 @@ pub const CountConfig = struct {
 
 pub const TimedConfig = struct {
     warmup_millis: u32 = 1000,
-    trial_samples: u32 = 200,
-    trial_millis: u32 = 4000,
-    perf_millis: u32 = 1000,
+    trial_samples: u32 = 100,
+    trial_millis: u32 = 2000,
+    perf_millis: u32 = 2000,
 };
 
 pub const Config = union(enum) {

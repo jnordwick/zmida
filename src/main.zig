@@ -21,7 +21,7 @@ pub fn main(init: std.process.Init) !void {
     );
     defer study.deinit();
     try study.write_text(null, .{ .mode = .thru });
-    try study.write_gnuplot("ex", .{});
+    //try study.write_gnuplot("ex", .{});
     //try study.write_gnuplot_perf("gamma", .{});
 }
 
