@@ -8,50 +8,93 @@ const time = @import("time.zig");
 const sys = @import("sys.zig");
 
 const ArgsType = @import("trial.zig").ArgsType;
-
-pub var have_set_gopts: bool = false;
-pub var gopts = root.GlobalOpts{};
+const Env = root.Env;
 
 pub fn verbose(comptime lev: u32, comptime fmt: []const u8, p: anytype) void {
-    if (lev <= gopts.verbose) {
+    if (lev <= Env.verbose) {
         std.debug.print(fmt, if (is_tuple(@TypeOf(p))) p else .{p});
     }
 }
 
-pub inline fn debug_warn() void {
-    if (@import("builtin").mode == .Debug and gopts.debug_warn) {
+pub fn debug_warn() void {
+    if (@import("builtin").mode == .Debug and Env.debug_warn) {
         std.debug.print("!!! WARNING !!! Compiled in debug mode.\n", .{});
-        gopts.debug_warn = false;
+        Env.debug_warn = false;
     }
 }
 
-pub fn set_global_opts(opts: root.GlobalOpts) void {
-    if (have_set_gopts) @panic("can only set global opts once");
-    have_set_gopts = true;
-    gopts = opts;
-    time.Clock.setup(if (gopts.use_tsc) .tsc else .monotonic) catch {
-        std.debug.print("!!! WARNING !!! No capable TSC. using monotonic.\n", .{});
-    };
-    if (gopts.pin_cpu) |cpu| {
-        const cpu_set: sys.cpu_set = .init(cpu);
-        sys.sched_setaffinity(0, &cpu_set) catch |e| {
-            panic("could not set cpu affinity to {}: {}\n", .{ cpu, e });
-        };
-        verbose(1, "set cpu affinity to {}\n", .{cpu});
+pub fn str_in(x: []const u8, pats: anytype) bool {
+    inline for (pats) |p| {
+        if (std.mem.eql(u8, x, p)) return true;
     }
-    if (gopts.set_prio) |prio| {
-        sys.setpriority(sys.PRIO.PROCESS, 0, prio) catch |e| {
-            panic("could not set priority (must be root for < 0) to {}: {}", .{ prio, e });
-        };
-        verbose(1, "set priority to {}\n", .{prio});
-    }
-    if (root.GlobalOpts.call_mod != .auto) {
-        verbose(1, "overriding @call modifier {}\n", .{root.GlobalOpts.call_mod});
-    }
-    debug_warn();
+    return false;
 }
 
-fn panic(comptime format: []const u8, args: anytype) noreturn {
+pub fn parse_bool(x: []const u8) bool {
+    if (str_in(x, .{ "true", "on" })) {
+        return true;
+    } else if (str_in(x, .{ "false", "off" })) {
+        return false;
+    } else {
+        panic("unknown option value: {s}", .{x});
+    }
+}
+
+pub fn split(str: [:0]const u8, sep: u8) struct { []const u8, []const u8 } {
+    const slice = str[0..str.len];
+    const pos = std.mem.indexOfScalar(u8, slice, sep) orelse
+        return .{ slice, "" };
+    return .{ slice[0..pos], slice[pos + 1 ..] };
+}
+
+pub fn parse_opts(pinit: *const std.process.Init, env_opts: root.EnvOpts) root.EnvOpts {
+    var opts = env_opts;
+    var iter = pinit.minimal.args.iterate();
+    _ = iter.skip();
+
+    while (iter.next()) |str| {
+        if (str[0] != '-') continue;
+        const name, const val = split(str, '=');
+        if (str_in(name, .{ "-v", "--verbose" })) {
+            const v = std.fmt.parseInt(u32, val, 10) catch
+                panic("verbose level 0-2: {s}", .{val});
+            verbose(2, "found verbose option {}\n", .{v});
+            opts.verbose = v;
+            // directly set for verbose to get trace output from option parsing
+            Env.verbose = v;
+        } else if (str_in(name, .{ "-w", "--warn" })) {
+            opts.debug_warn = val.len == 0 or parse_bool(val);
+        } else if (str_in(name, .{ "-t", "--tsc" })) {
+            opts.use_tsc = val.len == 0 or parse_bool(val);
+        } else if (str_in(name, .{ "-c", "--cpu" })) {
+            const v = std.fmt.parseInt(u32, val, 10) catch
+                panic("pin cpu wants cpu number: {s}", .{val});
+            opts.pin_cpu = v;
+        } else if (str_in(name, .{ "-n", "--nice" })) {
+            const v: i32 = std.fmt.parseInt(i32, val, 10) catch
+                panic("nice value -20 to 19: {s}", .{val});
+            opts.set_prio = v;
+        } else if (str_in(name, .{ "-p", "--perf" })) {
+            if (std.mem.eql(u8, val, "cpu")) {
+                opts.perf_cpu = true;
+                opts.perf_mem = false;
+            } else if (std.mem.eql(u8, val, "mem")) {
+                opts.perf_cpu = false;
+                opts.perf_mem = true;
+            } else if (std.mem.eql(u8, val, "both")) {
+                opts.perf_cpu = true;
+                opts.perf_mem = true;
+            } else {
+                panic("unknown perf arguent (cpu, mem, both): {s}", .{val});
+            }
+        } else {
+            panic("unknown option name: {s}", .{name});
+        }
+    }
+    return opts;
+}
+
+pub fn panic(comptime format: []const u8, args: anytype) noreturn {
     var buffer: [512]u8 = undefined;
     const str = std.fmt.bufPrint(&buffer, format, args) catch {
         @panic("Could not create panic message");
@@ -90,6 +133,16 @@ pub fn float_div(T: type, num: anytype, denom: anytype) T {
 
 pub fn idiv_up(T: type, n: anytype, d: anytype) T {
     return (@as(T, @intCast(d)) - 1 + @as(T, @intCast(n))) / @as(T, @intCast(d));
+}
+
+pub fn abs_diff(T: type, x: T, y: T) T {
+    return if (x > y) x - y else y - x;
+}
+
+pub fn rel_diff(actual: anytype, expected: anytype) f64 {
+    const a = to_float(f64, actual);
+    const e = to_float(f64, expected);
+    return (a - e) / e;
 }
 
 pub inline fn argstype_of(x: type) ArgsType {
@@ -159,7 +212,7 @@ pub fn get_fname(comptime func: anytype) []const u8 {
     return WhoAreYou(func).who;
 }
 
-pub fn get_file(env: root.Env, fname: ?[]const u8, suffix: []const u8) !std.Io.File {
+pub fn get_file(fname: ?[]const u8, suffix: []const u8) !std.Io.File {
     if (fname == null) {
         return std.Io.File.stdout();
     }
@@ -168,7 +221,7 @@ pub fn get_file(env: root.Env, fname: ?[]const u8, suffix: []const u8) !std.Io.F
     var name: [1024]u8 = undefined;
     std.mem.copyForwards(u8, name[0..], fname.?);
     std.mem.copyForwards(u8, name[fname.?.len..], suffix);
-    return std.Io.Dir.cwd().createFile(env.io, name[0..len], .{});
+    return std.Io.Dir.cwd().createFile(Env.io, name[0..len], .{});
 }
 
 pub fn make_cpu_panel(alloc: Allocator) !perf.PerfPanel {
@@ -191,4 +244,32 @@ test "alrefs" {
 test get_fname {
     try tt.expectEqualStrings("util.WhoAreYou((function 'get_fname'))", WhoAreYou(get_fname).the);
     try tt.expectEqualStrings("get_fname", get_fname(get_fname));
+}
+
+test split {
+    const testing = std.testing;
+
+    var r = split("foo=bar", '=');
+    try testing.expectEqualStrings("foo", r[0]);
+    try testing.expectEqualStrings("bar", r[1]);
+
+    r = split("foo", '=');
+    try testing.expectEqualStrings("foo", r[0]);
+    try testing.expectEqualStrings("", r[1]);
+
+    r = split("=bar", '=');
+    try testing.expectEqualStrings("", r[0]);
+    try testing.expectEqualStrings("bar", r[1]);
+
+    r = split("foo=", '=');
+    try testing.expectEqualStrings("foo", r[0]);
+    try testing.expectEqualStrings("", r[1]);
+
+    r = split("foo=bar=baz", '=');
+    try testing.expectEqualStrings("foo", r[0]);
+    try testing.expectEqualStrings("bar=baz", r[1]);
+
+    r = split("", '=');
+    try testing.expectEqualStrings("", r[0]);
+    try testing.expectEqualStrings("", r[1]);
 }

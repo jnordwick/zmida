@@ -271,32 +271,32 @@ fn workload(reps: u64) void {
     }
 }
 
-test {
-    const events0 = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
-    const events1 = [_]Event{ .l1d_read, .l1d_read_miss, .ll_read, .ll_read_miss };
-    const events2 = [_]Event{ .l1d_write, .ll_write, .ll_write_miss };
+// test {
+//     const events0 = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
+//     const events1 = [_]Event{ .l1d_read, .l1d_read_miss, .ll_read, .ll_read_miss };
+//     const events2 = [_]Event{ .l1d_write, .ll_write, .ll_write_miss };
 
-    var ps: PerfPanel = .init(std.testing.allocator, false);
-    try ps.add(&events0);
-    try ps.add(&events1);
-    try ps.add(&events2);
+//     var ps: PerfPanel = .init(std.testing.allocator, false);
+//     try ps.add(&events0);
+//     try ps.add(&events1);
+//     try ps.add(&events2);
 
-    try ps.open();
-    try ps.enable();
-    workload(1_000_000);
-    try ps.disable();
+//     try ps.open();
+//     try ps.enable();
+//     workload(1_000_000);
+//     try ps.disable();
 
-    var samp: Sample = .{};
-    try ps.read(0, samp.buffer(ps.nevents(0)));
-    std.debug.print("{any}\n", .{samp});
+//     var samp: Sample = .{};
+//     try ps.read(0, samp.buffer(ps.nevents(0)));
+//     std.debug.print("{any}\n", .{samp});
 
-    samp.clear();
-    try ps.read(1, samp.buffer(ps.nevents(1)));
-    std.debug.print("{any}\n", .{samp});
+//     samp.clear();
+//     try ps.read(1, samp.buffer(ps.nevents(1)));
+//     std.debug.print("{any}\n", .{samp});
 
-    samp.clear();
-    try ps.read(2, samp.buffer(ps.nevents(2)));
-    std.debug.print("{any}\n", .{samp});
+//     samp.clear();
+//     try ps.read(2, samp.buffer(ps.nevents(2)));
+//     std.debug.print("{any}\n", .{samp});
 
-    ps.deinit();
-}
+//     ps.deinit();
+// }

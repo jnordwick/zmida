@@ -15,6 +15,8 @@ const PerfLevel = root.PerfLevel;
 const runners = @import("runners.zig");
 const util = @import("util.zig");
 const float_div = util.float_div;
+const to_float = util.to_float;
+const verbose = util.verbose;
 
 // Definitions are the actual parameters for a trial.
 // these are concrete and what are the repeatable pieces.
@@ -27,7 +29,6 @@ pub const CountDef = struct {
     trial_samples: u64,
     sample_sweeps: u64,
     perf_sweeps: u64,
-    perf_level: PerfLevel,
 };
 
 pub const TimedDef = struct {
@@ -35,12 +36,21 @@ pub const TimedDef = struct {
     trial_samples: u64,
     sample_nanos: u64,
     perf_nanos: u64,
-    perf_level: PerfLevel,
+};
+
+pub const AdaptDef = struct {
+    warmup_nanos: u64,
+    trial_samples: u64,
+    sample_nanos: u64,
+    perf_nanos: u64,
+    est_sample_sweeps: u64,
+    est_perf_sweeps: u64,
 };
 
 pub const TrialDef = union(enum) {
     timed: TimedDef,
     count: CountDef,
+    adapt: AdaptDef,
 };
 
 pub const ArgsType = enum {
@@ -59,16 +69,14 @@ pub const Trial = struct {
     name: []const u8,
     data: ArrayList(Sample),
     perf: PerfSample,
-    env: Env,
     def: TrialDef,
     calls_per_sweep: u64 = 0, // calls per sweep, args.len
 
-    pub fn init(env: Env, def: TrialDef, name: []const u8) Trial {
+    pub fn init(def: TrialDef, name: []const u8) Trial {
         return .{
-            .env = env,
             .def = def,
             .name = name,
-            .data = .init(env.alloc),
+            .data = .init(Env.alloc),
             .perf = .{},
         };
     }
@@ -78,29 +86,34 @@ pub const Trial = struct {
     }
 
     pub fn run(this: *@This(), func: anytype, args: anytype) !void {
-        try this.data.ensureTotalCapacity(this.def.timed.trial_samples);
+        const nsamples = switch (this.def) {
+            .timed => |d| d.trial_samples,
+            .count => |d| d.trial_samples,
+            .adapt => |d| d.trial_samples,
+        };
+        try this.data.ensureTotalCapacity(nsamples);
         this.data.clearRetainingCapacity();
         this.calls_per_sweep = util.argslen(args);
 
         switch (this.def) {
             .count => try this.bycount(func, args),
             .timed => try this.bytimed(func, args),
+            .adapt => try this.byadapt(func, args),
         }
     }
 
     pub fn bycount(this: *@This(), func: anytype, args: anytype) !void {
         const argstype = util.argstype_of(@TypeOf(args));
-        util.verbose(1, "Trial {s}", .{
+        verbose(1, "Trial {s}", .{
             this.name,
         });
 
         // warmup
-        util.verbose(1, " warmup {d}k calls", .{
+        verbose(1, " warmup {d}k calls", .{
             float_div(f64, this.def.count.warmup_sweeps * this.calls_per_sweep, 1000),
         });
         dno(try runners.count_sample(
             argstype,
-            this.env,
             null,
             this.def.count.warmup_sweeps,
             func,
@@ -108,15 +121,14 @@ pub const Trial = struct {
         ));
 
         // timed
-        util.verbose(1, " samples {d} sweeps @ {d} calls", .{
+        verbose(1, " samples {d} sweeps @ {d} calls", .{
             this.def.count.trial_samples,
             this.def.count.sample_sweeps * this.calls_per_sweep,
         });
         for (0..this.def.count.trial_samples) |i| {
-            util.verbose(2, " {d}", i + 1);
+            verbose(2, " {d}", i + 1);
             var res = try runners.count_sample(
                 argstype,
-                this.env,
                 null,
                 this.def.count.sample_sweeps,
                 func,
@@ -125,19 +137,18 @@ pub const Trial = struct {
             res.ord = i;
             try this.data.append(res);
         }
-        util.verbose(1, "\n", .{});
+        verbose(1, "\n", .{});
 
         // perf
-        if (this.def.count.perf_level.cpu) {
-            util.verbose(
+        if (Env.perf_cpu) {
+            verbose(
                 1,
                 "Trial {s} cpu perf_events. {d} sweeps\n",
                 .{ this.name, this.def.count.perf_sweeps },
             );
-            var panel = try util.make_cpu_panel(this.env.alloc);
+            var panel = try util.make_cpu_panel(Env.alloc);
             const res = try runners.count_sample(
                 argstype,
-                this.env,
                 &panel,
                 this.def.count.perf_sweeps,
                 func,
@@ -148,18 +159,95 @@ pub const Trial = struct {
             panel.deinit();
         }
 
-        if (this.def.count.perf_level.mem) {
-            util.verbose(
+        if (Env.perf_mem) {
+            verbose(
                 1,
                 "Trial {s} meme perf_events. {d} sweeps\n",
                 .{ this.name, this.def.count.perf_sweeps },
             );
-            var panel = try util.make_mem_panel(this.env.alloc);
+            var panel = try util.make_mem_panel(Env.alloc);
             const res = try runners.count_sample(
                 argstype,
-                this.env,
                 &panel,
                 this.def.count.perf_sweeps,
+                func,
+                args,
+            );
+            this.perf.mem_calls = res.calls;
+            try panel.read(0, this.perf.memr.as_payload());
+            try panel.read(1, this.perf.memw.as_payload());
+            panel.deinit();
+        }
+    }
+
+    pub fn byadapt(this: *@This(), func: anytype, args: anytype) !void {
+        const argstype = util.argstype_of(@TypeOf(args));
+        verbose(1, "Trial {s}", .{this.name});
+
+        // warmup
+        verbose(1, " warmup ({d:.3}ms)\n", .{float_div(f64, this.def.adapt.warmup_nanos, 1e6)});
+        dno(try runners.timed_sample(argstype, null, this.def.adapt.warmup_nanos, func, args));
+
+        // estimate sample sweep count
+        const pre_est = try runners.timed_sample(argstype, null, this.def.adapt.sample_nanos, func, args);
+        const est_sweeps = util.idiv_up(u64, pre_est.calls, this.calls_per_sweep);
+
+        verbose(2, "pre-estimate {} calls in {d:.1} nanos, running {} sweeps\n", .{ pre_est.calls, pre_est.nanos, est_sweeps });
+        const verify = try runners.count_sample(argstype, null, est_sweeps, func, args);
+        const diff = util.rel_diff(this.def.adapt.sample_nanos, verify.nanos);
+
+        verbose(2, "pre-estimate off by {d:.2}% adjusting\n", .{100 * diff});
+        const ftimecalls = float_div(f64, this.def.adapt.sample_nanos, verify.nanos) * to_float(f64, verify.calls);
+        const fperfcalls = float_div(f64, this.def.adapt.perf_nanos, verify.nanos) * to_float(f64, verify.calls);
+        const ftimesweeps = @ceil(ftimecalls / to_float(f64, this.calls_per_sweep));
+        const fperfsweeps = @ceil(fperfcalls / to_float(f64, this.calls_per_sweep));
+        this.def.adapt.est_sample_sweeps = @intFromFloat(ftimesweeps);
+        this.def.adapt.est_perf_sweeps = @intFromFloat(fperfsweeps);
+
+        // timed
+        verbose(1, "timing samples {d} sweeps @ {d} calls", .{
+            this.def.adapt.trial_samples,
+            this.def.adapt.est_sample_sweeps * this.calls_per_sweep,
+        });
+        for (0..this.def.adapt.trial_samples) |i| {
+            verbose(2, " {d}", i + 1);
+            var res = try runners.count_sample(argstype, null, this.def.adapt.est_sample_sweeps, func, args);
+            res.ord = i;
+            try this.data.append(res);
+        }
+        verbose(1, "\n", .{});
+
+        // perf
+        if (Env.perf_cpu) {
+            verbose(
+                1,
+                "Trial {s} cpu perf_events. {d} sweeps\n",
+                .{ this.name, this.def.adapt.est_perf_sweeps },
+            );
+            var panel = try util.make_cpu_panel(Env.alloc);
+            const res = try runners.count_sample(
+                argstype,
+                &panel,
+                this.def.adapt.est_perf_sweeps,
+                func,
+                args,
+            );
+            this.perf.cpu_calls = res.calls;
+            try panel.read(0, this.perf.cpu.as_payload());
+            panel.deinit();
+        }
+
+        if (Env.perf_mem) {
+            verbose(
+                1,
+                "Trial {s} meme perf_events. {d} sweeps\n",
+                .{ this.name, this.def.adapt.est_perf_sweeps },
+            );
+            var panel = try util.make_mem_panel(Env.alloc);
+            const res = try runners.count_sample(
+                argstype,
+                &panel,
+                this.def.adapt.est_perf_sweeps,
                 func,
                 args,
             );
@@ -172,29 +260,27 @@ pub const Trial = struct {
 
     pub fn bytimed(this: *@This(), func: anytype, args: anytype) !void {
         const argstype = util.argstype_of(@TypeOf(args));
-        util.verbose(1, "Trial {s}", .{this.name});
+        verbose(1, "Trial {s}", .{this.name});
 
         // warmup
-        util.verbose(1, " warmup ({d:.3}ms)", .{
+        verbose(1, " warmup ({d:.3}ms)", .{
             float_div(f64, this.def.timed.warmup_nanos, 1e6),
         });
         dno(try runners.timed_sample(
             argstype,
-            this.env,
             null,
             this.def.timed.warmup_nanos,
             func,
             args,
         ));
 
-        util.verbose(1, " samples @ {d:.3}ms", .{
+        verbose(1, " samples @ {d:.3}ms", .{
             float_div(f64, this.def.timed.sample_nanos, 1e6),
         });
         for (0..this.def.timed.trial_samples) |i| {
-            util.verbose(2, " {d}", i + 1);
+            verbose(2, " {d}", i + 1);
             var res = try runners.timed_sample(
                 argstype,
-                this.env,
                 null,
                 this.def.timed.sample_nanos,
                 func,
@@ -203,19 +289,18 @@ pub const Trial = struct {
             res.ord = i;
             try this.data.append(res);
         }
-        util.verbose(1, "\n", .{});
+        verbose(1, "\n", .{});
 
         // perf
-        if (this.def.timed.perf_level.cpu) {
-            util.verbose(
+        if (Env.perf_cpu) {
+            verbose(
                 1,
                 "Trial {s} cpu perf_events. {d} ns\n",
                 .{ this.name, this.def.timed.perf_nanos },
             );
-            var panel = try util.make_cpu_panel(this.env.alloc);
+            var panel = try util.make_cpu_panel(Env.alloc);
             const res = try runners.timed_sample(
                 argstype,
-                this.env,
                 &panel,
                 this.def.timed.perf_nanos,
                 func,
@@ -226,16 +311,15 @@ pub const Trial = struct {
             panel.deinit();
         }
 
-        if (this.def.timed.perf_level.mem) {
-            util.verbose(
+        if (Env.perf_mem) {
+            verbose(
                 1,
                 "Trial {s} mem perf_events. {d} ns\n",
                 .{ this.name, this.def.timed.perf_nanos },
             );
-            var panel = try util.make_mem_panel(this.env.alloc);
+            var panel = try util.make_mem_panel(Env.alloc);
             const res = try runners.timed_sample(
                 argstype,
-                this.env,
                 &panel,
                 this.def.timed.perf_nanos,
                 func,
@@ -248,8 +332,8 @@ pub const Trial = struct {
         }
     }
 
-    pub fn statistics(this: *@This(), env: Env) TrialStats {
-        return .init(env.alloc, this);
+    pub fn statistics(this: *@This()) TrialStats {
+        return .init(this);
     }
 };
 

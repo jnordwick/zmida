@@ -1,5 +1,4 @@
 const std = @import("std");
-const Allocator = std.mem.Allocator;
 const tt = std.testing;
 
 const root = @import("root.zig");
@@ -8,6 +7,7 @@ const MemReadCounters = root.MemReadCounters;
 const MemWriteCounters = root.MemWriteCounters;
 const util = @import("util.zig");
 const float_div = util.float_div;
+const Env = root.Env;
 
 pub const TrialStats = struct {
     trial: *const root.Trial,
@@ -40,7 +40,7 @@ pub const TrialStats = struct {
 
     percentiles: [101]f64 = @splat(0),
 
-    pub fn init(alloc: Allocator, trial: *const root.Trial) TrialStats {
+    pub fn init(trial: *const root.Trial) TrialStats {
         const runs_slice = trial.data.items;
         if (runs_slice.len == 0) return .{ .trial = trial };
 
@@ -53,8 +53,8 @@ pub const TrialStats = struct {
             total_nanos += batch.nanos;
         }
 
-        const lat = latencies(alloc, trial.data.items);
-        defer alloc.free(lat);
+        const lat = latencies(trial.data.items);
+        defer Env.alloc.free(lat);
         const min_ns, const max_ns = minmax(lat);
 
         const cpu_calls: f64 = @floatFromInt(trial.perf.cpu_calls);
@@ -101,8 +101,8 @@ fn adj(counter: anytype, c: u64) f64 {
     return (en / ru) * cf;
 }
 
-fn latencies(alloc: Allocator, samples: []root.Sample) []f64 {
-    var s = alloc.alloc(f64, samples.len) catch @panic("oom");
+fn latencies(samples: []root.Sample) []f64 {
+    var s = Env.alloc.alloc(f64, samples.len) catch @panic("oom");
     for (samples, 0..samples.len) |x, i| {
         s[i] = float_div(f64, x.nanos, x.calls);
     }

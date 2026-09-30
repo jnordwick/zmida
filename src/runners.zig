@@ -25,7 +25,7 @@ const events_memw = [_]Event{ .l1d_write, .ll_write, .ll_write_miss };
 
 inline fn call(func: anytype, arg: anytype) void {
     dno(&arg);
-    dno(@call(root.GlobalOpts.call_mod, func, arg));
+    dno(@call(Env.call_mod, func, arg));
 }
 
 inline fn sweep(comptime argstype: ArgsType, func: anytype, args: anytype) void {
@@ -68,7 +68,6 @@ inline fn count_loop(
 // noinline because I want the same code path warmed up
 pub noinline fn count_sample(
     comptime argstype: ArgsType,
-    _: Env,
     panel: ?*PerfPanel,
     sweeps: u64,
     func: anytype,
@@ -118,7 +117,6 @@ pub fn set_bool(start: *AtomicBool, stop: *AtomicBool, nanos: u64) void {
 // noinline because i want the same code path warmed up.
 pub noinline fn timed_sample(
     comptime argstype: ArgsType,
-    _: Env,
     panel: ?*PerfPanel,
     nanos: u64,
     func: anytype,
@@ -165,13 +163,13 @@ fn mktuple(comptime n: u64, from: f64, to: f64) [n]struct { comptime type = f64,
 }
 
 test "count_sample slice naked" {
-    const env = Env{ .alloc = tt.allocator, .io = tt.io };
+    Env.alloc = tt.allocator;
+    Env.io = tt.io;
     const args = gen.uniform(f64, 5, 0, 20, 0);
     const args_slice: []const f64 = @ptrCast(&args);
 
     const t = try count_sample(
         .slice_naked,
-        env,
         null,
         3,
         std.math.sin,
@@ -181,11 +179,11 @@ test "count_sample slice naked" {
 }
 
 test "count_sample single tuple" {
-    const env = Env{ .alloc = tt.allocator, .io = tt.io };
+    Env.alloc = tt.allocator;
+    Env.io = tt.io;
     const arg: f64 = 0.6;
     const t = try count_sample(
         .single_tuple,
-        env,
         null,
         30,
         std.math.sin,
@@ -222,11 +220,12 @@ test "count_sample generator" {
         }
     };
 
-    const env = Env{ .alloc = tt.allocator, .io = tt.io };
+    Env.alloc = tt.allocator;
+    Env.io = tt.io;
+
     const arg: test_gen = .init(0, 10, 2);
     const t = try count_sample(
         .generator,
-        env,
         null,
         5,
         std.math.sin,
@@ -236,7 +235,8 @@ test "count_sample generator" {
 }
 
 test "count_sample nil" {
-    const env = Env{ .alloc = tt.allocator, .io = tt.io };
+    Env.alloc = tt.allocator;
+    Env.io = tt.io;
     const func = struct {
         pub fn sin45() f64 {
             var x: f64 = 0;
@@ -244,19 +244,19 @@ test "count_sample nil" {
             return std.math.sin(x);
         }
     }.sin45;
-    const t = try count_sample(.niladic, env, null, 30, func, {});
+    const t = try count_sample(.niladic, null, 30, func, {});
     try tt.expect(t.calls == 30);
 }
 
 test "count_samples multiple" {
-    const env = Env{ .alloc = tt.allocator, .io = tt.io };
+    Env.alloc = tt.allocator;
+    Env.io = tt.io;
     const args = mktuple(10, 2, 20);
     const arg_t = struct { comptime type = f64, f64, f64 };
     const args_slice: []const arg_t = @ptrCast(&args);
 
     const t = try count_sample(
         .slice_tuple,
-        env,
         null,
         3,
         std.math.log,
@@ -266,13 +266,13 @@ test "count_samples multiple" {
 }
 
 test "timed_samples single" {
-    const env = Env{ .alloc = tt.allocator, .io = tt.io };
+    Env.alloc = tt.allocator;
+    Env.io = tt.io;
     const args = gen.uniform(f64, 100, 0, 1000, 0);
     const args_slice: []const f64 = @ptrCast(&args);
 
     const t = try timed_sample(
         .slice_naked,
-        env,
         null,
         50 * 1000 * 1000,
         std.math.sin,
@@ -284,7 +284,8 @@ test "timed_samples single" {
 }
 
 test "timed_sample nil" {
-    const env = Env{ .alloc = tt.allocator, .io = tt.io };
+    Env.alloc = tt.allocator;
+    Env.io = tt.io;
     const func = struct {
         pub fn sin45() f64 {
             var x: f64 = 0;
@@ -292,16 +293,16 @@ test "timed_sample nil" {
             return std.math.sin(x);
         }
     }.sin45;
-    const t = try timed_sample(.niladic, env, null, 10 * 1e6, func, {});
+    const t = try timed_sample(.niladic, null, 10 * 1e6, func, {});
     try tt.expect(t.calls > 100);
 }
 
 test "timed_sample single tuple" {
-    const env = Env{ .alloc = tt.allocator, .io = tt.io };
+    Env.alloc = tt.allocator;
+    Env.io = tt.io;
     const arg: f64 = 0.6;
     const t = try timed_sample(
         .single_tuple,
-        env,
         null,
         5 * 1e6,
         std.math.sin,
@@ -311,14 +312,14 @@ test "timed_sample single tuple" {
 }
 
 test "timed_samples multiple" {
+    Env.alloc = tt.allocator;
+    Env.io = tt.io;
     const arg_t = struct { comptime type = f64, f64, f64 };
-    const env = Env{ .alloc = tt.allocator, .io = tt.io };
     const args = mktuple(100, 2, 20);
     const args_slice: []const arg_t = @ptrCast(&args);
 
     const t = try timed_sample(
         .slice_tuple,
-        env,
         null,
         50 * 1000 * 1000,
         std.math.log,
