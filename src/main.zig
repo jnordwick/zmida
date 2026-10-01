@@ -7,7 +7,7 @@ pub fn main(init: std.process.Init) !void {
     const funcs = .{ logtgamma, lgamma, logtgamma, lgamma };
     const xx = zm.gen.uniform(f64, 100, 0, 10, 0);
 
-    zm.init(init, .{
+    zm.init(&init, .{
         .verbose = 2,
         .pin_cpu = 1,
         .perf_cpu = true,

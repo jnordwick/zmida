@@ -2,16 +2,16 @@ const std = @import("std");
 const floor = std.math.floor;
 const log = std.math.log;
 
-const float_div = @import("util.zig").float_div;
 const root = @import("root.zig");
 const time = @import("time.zig");
 const Env = root.Env;
 
 const text_header =
     \\study: {[name]s}
+    \\compile: {[mode]}
     \\units: {[longunits]s}
     \\clock: {[clkname]} @ {[clkfreq]d} Hz
-    \\mode: {[mode]s}
+    \\display: {[disp]s}
     \\
 ;
 
@@ -46,7 +46,8 @@ pub fn text_latency(
     if (opts.with_header) {
         try writer.print(text_header, .{
             .name = title,
-            .mode = "latency (lower is better)",
+            .mode = @import("builtin").mode,
+            .disp = "latency (lower is better)",
             .longunits = longunits,
             .clkname = time.Clock.clksrc,
             .clkfreq = time.Clock.hz,
@@ -141,7 +142,8 @@ pub fn text_thruput(
     if (opts.with_header) {
         try writer.print(text_header, .{
             .name = title,
-            .mode = "throughput (higher is better)",
+            .mode = @import("builtin").mode,
+            .disp = "throughput (higher is better)",
             .longunits = longunits,
             .clkname = time.Clock.clksrc,
             .clkfreq = time.Clock.hz,

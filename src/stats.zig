@@ -2,9 +2,6 @@ const std = @import("std");
 const tt = std.testing;
 
 const root = @import("root.zig");
-const CpuCounters = root.CpuCounters;
-const MemReadCounters = root.MemReadCounters;
-const MemWriteCounters = root.MemWriteCounters;
 const util = @import("util.zig");
 const float_div = util.float_div;
 const Env = root.Env;
@@ -80,7 +77,7 @@ pub const TrialStats = struct {
             .branch_per_call = adj(cpu, cpu.branch_total) / cpu_calls,
             .l1i_miss_per_call = adj(cpu, cpu.l1i_read_miss) / cpu_calls,
 
-            .l1d_miss_per_mill = float_div(1_000_000 * memr.l1d_read_miss, memr.l1d_read),
+            .l1d_miss_per_mill = float_div(f64, 1_000_000 * memr.l1d_read_miss, memr.l1d_read),
             .l1d_read_per_call = adj(memr, memr.l1d_read) / mem_calls,
             .l1d_read_miss_per_call = adj(memr, memr.l1d_read_miss) / mem_calls,
 

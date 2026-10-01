@@ -1,17 +1,12 @@
 const std = @import("std");
 const dno = std.mem.doNotOptimizeAway;
 const ArrayList = std.array_list.Managed;
-const Allocator = std.mem.Allocator;
 
-const perf = @import("perf.zig");
-const PerfPanel = perf.PerfPanel;
 const root = @import("root.zig");
 const Sample = root.Sample;
 const PerfSample = root.PerfSample;
-const PerfTrial = root.PerfTrial;
 const Env = root.Env;
 const TrialStats = root.TrialStats;
-const PerfLevel = root.PerfLevel;
 const runners = @import("runners.zig");
 const util = @import("util.zig");
 const float_div = util.float_div;

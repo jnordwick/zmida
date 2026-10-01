@@ -4,21 +4,30 @@ const Allocator = std.mem.Allocator;
 
 const root = @import("root.zig");
 const perf = @import("perf.zig");
-const time = @import("time.zig");
-const sys = @import("sys.zig");
 
 const ArgsType = @import("trial.zig").ArgsType;
 const Env = root.Env;
 
-pub fn verbose(comptime lev: u32, comptime fmt: []const u8, p: anytype) void {
+pub fn verbose(lev: u32, comptime fmt: []const u8, args: anytype) void {
     if (lev <= Env.verbose) {
-        std.debug.print(fmt, if (is_tuple(@TypeOf(p))) p else .{p});
+        var buffer: [512]u8 = undefined;
+        const stderr = std.Io.File.stderr();
+        var writer = stderr.writer(Env.io, &buffer);
+        writer.interface.print(fmt, if (is_tuple(@TypeOf(args))) args else .{args}) catch |e| {
+            panic("print failed: {}", .{e});
+        };
+        writer.interface.flush() catch |e| {
+            panic("flush failed: {}", .{e});
+        };
     }
 }
 
 pub fn debug_warn() void {
+    // Test the ORIGINAL io, not Env.io.
+    const stderr = std.Io.File.stderr();
+    stderr.writeStreamingAll(Env.io, "DEBUG WARN IO\n") catch {};
     if (@import("builtin").mode == .Debug and Env.debug_warn) {
-        std.debug.print("!!! WARNING !!! Compiled in debug mode.\n", .{});
+        verbose(0, "!!! WARNING !!! Compiled in debug mode.\n", .{});
         Env.debug_warn = false;
     }
 }

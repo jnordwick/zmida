@@ -15,13 +15,8 @@ const Env = root.Env;
 const PerfPanel = perf.PerfPanel;
 const Event = perf.Event;
 const Timer = time.Timer;
-const MemSample = root.MemSample;
 
 const AtomicBool = std.atomic.Value(bool);
-
-const events_cpu = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
-const events_memr = [_]Event{ .l1d_read, .l1d_read_miss, .ll_read, .ll_read_miss };
-const events_memw = [_]Event{ .l1d_write, .ll_write, .ll_write_miss };
 
 inline fn call(func: anytype, arg: anytype) void {
     dno(&arg);

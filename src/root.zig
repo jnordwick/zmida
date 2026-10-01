@@ -1,13 +1,11 @@
 const std = @import("std");
 const ArrayList = std.array_list.Managed;
-const ArgsTuple = std.meta.ArgsTuple;
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 
 pub const gen = @import("gen.zig");
 const out = @import("out.zig");
 const perf = @import("perf.zig");
-const runners = @import("runners.zig");
 const stats = @import("stats.zig");
 const time = @import("time.zig");
 const trial = @import("trial.zig");
@@ -294,23 +292,24 @@ pub const PerfSample = struct {
     memw: perf.MemWriteCounters = .{},
 };
 
-pub fn init(pinit: std.process.Init, env_opts: EnvOpts) void {
+pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
     if (Env.already_init) panic("Can only call zminda.init once", .{});
     Env.already_init = true;
+    Env.io = pinit.io;
+    Env.alloc = pinit.gpa;
+
+    const opts = util.parse_opts(pinit, env_opts);
+    Env.debug_warn = opts.debug_warn;
+    debug_warn();
+
     if (Env.call_mod != .auto) {
         verbose(1, "Overriding @call modifier {}\n", .{Env.call_mod});
     }
 
-    const opts = util.parse_opts(&pinit, env_opts);
-    Env.debug_warn = opts.debug_warn;
-    debug_warn();
-
     Env.verbose = opts.verbose;
-    Env.alloc = pinit.gpa;
-    Env.io = pinit.io;
     Env.use_tsc = opts.use_tsc;
     time.Clock.setup(if (Env.use_tsc) .tsc else .monotonic) catch {
-        std.debug.print("!!! WARNING !!! No capable TSC. using monotonic.\n", .{});
+        verbose(0, "!!! WARNING !!! No capable TSC. using monotonic.\n", .{});
     };
     Env.pin_cpu = opts.pin_cpu;
     if (Env.pin_cpu) |cpu| {
