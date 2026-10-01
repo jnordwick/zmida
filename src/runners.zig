@@ -130,6 +130,11 @@ pub noinline fn timed_sample(
         set_bool,
         .{ &start, &done, nanos },
     ) catch @panic("could not spawn");
+    errdefer {
+        start.store(true, .release);
+        done.store(true, .release);
+        timer_thread.join();
+    }
     const tid: sys.id_t = @intCast(timer_thread.getHandle());
     if (Env.orig_cpu_set) |cs| {
         try sys.sched_setaffinity(tid, &cs);

@@ -222,6 +222,9 @@ pub const PerfPanel = struct {
     }
 
     pub fn deinit(this: *@This()) void {
+        for (this.probes.items) |p| {
+            p.close();
+        }
         this.probes.deinit();
     }
 

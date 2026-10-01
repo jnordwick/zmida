@@ -26,7 +26,7 @@ pub const Env = struct {
     pub const call_mod: std.builtin.CallModifier = b: {
         const that = @import("root");
         const ne = @hasDecl(that, "zm__call_mod");
-        break :b if (ne) that.zmida_call_mod else .auto;
+        break :b if (ne) that.zm__call_mod else .auto;
     };
     pub var alloc: Allocator = undefined;
     pub var io: Io = undefined;
@@ -133,6 +133,7 @@ pub const Study = struct {
     }
 
     pub fn run(name: ?[]const u8, config: Config, funcs: anytype, args: anytype) !Study {
+        Env.check_init();
         var this = Study{
             .name = name orelse "zmida",
             .def = make_def(config, args),
@@ -187,18 +188,18 @@ pub const Study = struct {
             .timed => |c| {
                 const millis: u64 = @intCast(c.trial_millis);
                 return .{ .timed = .{
-                    .warmup_nanos = c.warmup_millis * 1_000_000,
+                    .warmup_nanos = @as(u64, c.warmup_millis) * 1_000_000,
                     .trial_samples = c.trial_samples,
-                    .sample_nanos = util.idiv_up(u64, millis * 1_000_000, c.trial_samples),
+                    .sample_nanos = util.idiv_up(u64, @as(u64, millis) * 1_000_000, c.trial_samples),
                     .perf_nanos = c.perf_millis * 1_000_000,
                 } };
             },
             .adapt => |c| {
                 const millis: u64 = @intCast(c.trial_millis);
                 return .{ .adapt = .{
-                    .warmup_nanos = c.warmup_millis * 1_000_000,
+                    .warmup_nanos = @as(u64, c.warmup_millis) * 1_000_000,
                     .trial_samples = c.trial_samples,
-                    .sample_nanos = util.idiv_up(u64, millis * 1_000_000, c.trial_samples),
+                    .sample_nanos = util.idiv_up(u64, @as(u64, millis) * 1_000_000, c.trial_samples),
                     .perf_nanos = c.perf_millis * 1_000_000,
                     .est_sample_sweeps = 0,
                     .est_perf_sweeps = 0,
@@ -229,10 +230,14 @@ pub const Study = struct {
             try out.text_thruput(iface, this.name, this.stats.items, opts);
         }
         if (topts.with_perf) {
-            try iface.writeByte('\n');
-            if (Env.perf_cpu) try out.text_perf_cpu(iface, this.stats.items, opts);
-            try iface.writeByte('\n');
-            if (Env.perf_mem) try out.text_perf_mem(iface, this.stats.items, opts);
+            if (Env.perf_cpu) {
+                try iface.writeByte('\n');
+                try out.text_perf_cpu(iface, this.stats.items, opts);
+            }
+            if (Env.perf_mem) {
+                try iface.writeByte('\n');
+                try out.text_perf_mem(iface, this.stats.items, opts);
+            }
         }
     }
 
@@ -313,6 +318,7 @@ pub fn init(pinit: std.process.Init, env_opts: EnvOpts) void {
         sys.sched_getaffinity(0, &orig_set) catch |e| {
             panic("count no get cpu affinity: {}\n", .{e});
         };
+        orig_set.clear(cpu);
         Env.orig_cpu_set = orig_set;
         const cpu_set: sys.cpu_set = .init(cpu);
         sys.sched_setaffinity(0, &cpu_set) catch |e| {

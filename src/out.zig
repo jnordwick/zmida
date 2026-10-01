@@ -5,6 +5,7 @@ const log = std.math.log;
 const float_div = @import("util.zig").float_div;
 const root = @import("root.zig");
 const time = @import("time.zig");
+const Env = root.Env;
 
 const text_header =
     \\study: {[name]s}
@@ -32,7 +33,7 @@ pub fn text_latency(
         name_len = @max(name_len, stats.trial.name.len);
         max_avg = @max(max_avg, stats.call_avg_ns);
     }
-    const groups: u32 = @intFromFloat(floor(log(f64, 1000.0, max_avg)));
+    const groups: u32 = @intFromFloat(@max(0, floor(log(f64, 1000.0, max_avg))));
     _, const longunits, const factor: f64 = switch (groups) {
         0 => .{ "ns", "nanosec/op", 1.0 },
         1 => .{ "us", "microsec/op", 1e-3 },
@@ -126,7 +127,7 @@ pub fn text_thruput(
         name_len = @max(name_len, stats.trial.name.len);
         max_avg = @max(max_avg, 1e9 / stats.call_avg_ns);
     }
-    const groups: u32 = @intFromFloat(floor(log(f64, 1000.0, max_avg)));
+    const groups: u32 = @intFromFloat(@max(0, floor(log(f64, 1000.0, max_avg))));
     _, const longunits, const factor: f64 = switch (groups) {
         0 => .{ "ops", "ops/sec", 1e9 },
         1 => .{ "Kops", "Kops/sec", 1e6 },
@@ -368,7 +369,6 @@ pub fn csv_summary(
     writer: *std.Io.Writer,
     trials: []const root.TrialStats,
     opts: root.SummaryOpts,
-    plevel: root.PerfLevel,
 ) !void {
     // header
     if (opts.with_header) {
@@ -379,14 +379,14 @@ pub fn csv_summary(
         for (opts.pctiles) |p| {
             try writer.print("{c}p{d}", .{ opts.separator, p });
         }
-        if (opts.with_perf and plevel.cpu) {
+        if (opts.with_perf and Env.perf_cpu) {
             try writer.print(
                 "{[sep]c}ipc{[sep]c}inst_per_call{[sep]c}cycle_per_call" ++
                     "{[sep]c}brmiss_per_mill{[sep]c}brmiss_per_call{[sep]c}branch_per_call{[sep]c}l1i_miss_per_call",
                 .{ .sep = opts.separator },
             );
         }
-        if (opts.with_perf and plevel.mem) {
+        if (opts.with_perf and Env.perf_mem) {
             try writer.print(
                 "{[sep]c}l1d_read_per_call{[sep]c}l1d_read_miss_per_call" ++
                     "{[sep]c}ll_read_per_call{[sep]c}ll_read_miss_per_call" ++
@@ -417,7 +417,7 @@ pub fn csv_summary(
                 .sep = opts.separator,
             });
         }
-        if (opts.with_perf and plevel.cpu) {
+        if (opts.with_perf and Env.perf_cpu) {
             try writer.print(
                 "{[sep]c}{[ipc]d:.4}{[sep]c}{[inst]d:.4}{[sep]c}{[cyc]d:.4}" ++
                     "{[sep]c}{[brmrt]d:.4}{[sep]c}{[brmiss]d:.4}{[sep]c}{[brtot]d:.4}{[sep]c}{[imiss]d:.4}",
@@ -433,7 +433,7 @@ pub fn csv_summary(
                 },
             );
         }
-        if (opts.with_perf and plevel.mem) {
+        if (opts.with_perf and Env.perf_mem) {
             try writer.print(
                 "{[sep]c}{[l1r]d:.4}{[sep]c}{[l1rm]d:.4}{[sep]c}{[llr]d:.4}{[sep]c}{[llrm]d:.4}" ++
                     "{[sep]c}{[l1w]d:.4}{[sep]c}{[llw]d:.4}{[sep]c}{[llwm]d:.4}",

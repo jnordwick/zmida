@@ -1,6 +1,5 @@
 # name mean p0 p10 p25 p50 p75 p90 p100
 
-set terminal wxt background rgb "#f1faee"
 set title "{[title]s}"
 set ylabel "{[units]s}"
 set grid y
