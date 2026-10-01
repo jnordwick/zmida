@@ -45,7 +45,7 @@ pub const TrialStats = struct {
         var total_nanos: f64 = 0;
 
         for (runs_slice) |batch| {
-            if (batch.calls == 0) @panic("batch had zero calls");
+            if (batch.calls == 0) util.errexit("batch had zero calls: 0", .{});
             total_calls += batch.calls;
             total_nanos += batch.nanos;
         }
@@ -100,7 +100,9 @@ fn adj(counter: anytype, c: u64) f64 {
 }
 
 fn latencies(samples: []root.Sample) []f64 {
-    var s = Env.alloc.alloc(f64, samples.len) catch @panic("oom");
+    var s = Env.alloc.alloc(f64, samples.len) catch |e| {
+        util.errexit("alloc failed {}", e);
+    };
     for (samples, 0..samples.len) |x, i| {
         s[i] = float_div(f64, x.nanos, x.calls);
     }

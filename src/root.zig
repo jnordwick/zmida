@@ -18,7 +18,7 @@ pub const TrialStats = stats.TrialStats;
 
 const debug_warn = util.debug_warn;
 const verbose = util.verbose;
-const panic = util.panic;
+const errexit = util.errexit;
 
 pub const Env = struct {
     pub const call_mod: std.builtin.CallModifier = b: {
@@ -39,7 +39,7 @@ pub const Env = struct {
     pub var orig_cpu_set: ?sys.cpu_set = null;
 
     pub fn check_init() void {
-        if (!already_init) panic("Did not zmida.init()", .{});
+        if (!already_init) errexit("Did not zmida.init()", .{});
     }
 };
 
@@ -293,7 +293,7 @@ pub const PerfSample = struct {
 };
 
 pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
-    if (Env.already_init) panic("Can only call zminda.init once", .{});
+    if (Env.already_init) errexit("Can only call zminda.init once", .{});
     Env.already_init = true;
     Env.io = pinit.io;
     Env.alloc = pinit.gpa;
@@ -315,20 +315,20 @@ pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
     if (Env.pin_cpu) |cpu| {
         var orig_set: sys.cpu_set = .{};
         sys.sched_getaffinity(0, &orig_set) catch |e| {
-            panic("count no get cpu affinity: {}\n", .{e});
+            errexit("count no get cpu affinity: {}\n", .{e});
         };
         orig_set.clear(cpu);
         Env.orig_cpu_set = orig_set;
         const cpu_set: sys.cpu_set = .init(cpu);
         sys.sched_setaffinity(0, &cpu_set) catch |e| {
-            panic("could not set cpu affinity to {}: {}\n", .{ cpu, e });
+            errexit("could not set cpu affinity to {}: {}\n", .{ cpu, e });
         };
         verbose(1, "set cpu affinity to {}\n", .{cpu});
     }
     Env.set_prio = opts.set_prio;
     if (Env.set_prio) |prio| {
         sys.setpriority(sys.PRIO.PROCESS, 0, prio) catch |e| {
-            panic("could not set priority (must be root for < 0) to {}: {}", .{ prio, e });
+            errexit("could not set priority (must be root for < 0) to {}: {}", .{ prio, e });
         };
         verbose(1, "set priority to {}\n", .{prio});
     }

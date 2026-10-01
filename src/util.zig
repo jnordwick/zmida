@@ -14,10 +14,10 @@ pub fn verbose(lev: u32, comptime fmt: []const u8, args: anytype) void {
         const stderr = std.Io.File.stderr();
         var writer = stderr.writer(Env.io, &buffer);
         writer.interface.print(fmt, if (is_tuple(@TypeOf(args))) args else .{args}) catch |e| {
-            panic("print failed: {}", .{e});
+            errexit("print failed: {}", e);
         };
         writer.interface.flush() catch |e| {
-            panic("flush failed: {}", .{e});
+            errexit("flush failed: {}", e);
         };
     }
 }
@@ -45,7 +45,7 @@ pub fn parse_bool(x: []const u8) bool {
     } else if (str_in(x, .{ "false", "off" })) {
         return false;
     } else {
-        panic("unknown option value: {s}", .{x});
+        errexit("unknown option value: {s}", x);
     }
 }
 
@@ -65,8 +65,13 @@ pub fn parse_opts(pinit: *const std.process.Init, env_opts: root.EnvOpts) root.E
         if (str[0] != '-') continue;
         const name, const val = split(str, '=');
         if (str_in(name, .{ "-v", "--verbose" })) {
-            const v = std.fmt.parseInt(u32, val, 10) catch
-                panic("verbose level 0-2: {s}", .{val});
+            var v: u32 = 0;
+            if (val.len > 0) {
+                v = std.fmt.parseInt(u32, val, 10) catch
+                    errexit("verbose level 0-2: {s}", val);
+            } else {
+                v = 1;
+            }
             verbose(2, "found verbose option {}\n", .{v});
             opts.verbose = v;
             // directly set for verbose to get trace output from option parsing
@@ -77,11 +82,11 @@ pub fn parse_opts(pinit: *const std.process.Init, env_opts: root.EnvOpts) root.E
             opts.use_tsc = val.len == 0 or parse_bool(val);
         } else if (str_in(name, .{ "-c", "--cpu" })) {
             const v = std.fmt.parseInt(u32, val, 10) catch
-                panic("pin cpu wants cpu number: {s}", .{val});
+                errexit("pin cpu wants cpu number: {s}", val);
             opts.pin_cpu = v;
         } else if (str_in(name, .{ "-n", "--nice" })) {
             const v: i32 = std.fmt.parseInt(i32, val, 10) catch
-                panic("nice value -20 to 19: {s}", .{val});
+                errexit("nice value -20 to 19: {s}", val);
             opts.set_prio = v;
         } else if (str_in(name, .{ "-p", "--perf" })) {
             if (std.mem.eql(u8, val, "cpu")) {
@@ -94,13 +99,18 @@ pub fn parse_opts(pinit: *const std.process.Init, env_opts: root.EnvOpts) root.E
                 opts.perf_cpu = true;
                 opts.perf_mem = true;
             } else {
-                panic("unknown perf arguent (cpu, mem, both): {s}", .{val});
+                errexit("unknown perf arguent (cpu, mem, both): {s}", val);
             }
         } else {
-            panic("unknown option name: {s}", .{name});
+            errexit("unknown option name: {s}", name);
         }
     }
     return opts;
+}
+
+pub fn errexit(comptime format: []const u8, args: anytype) noreturn {
+    verbose(0, format ++ "\n", args);
+    std.process.exit(1);
 }
 
 pub fn panic(comptime format: []const u8, args: anytype) noreturn {
@@ -226,7 +236,7 @@ pub fn get_file(fname: ?[]const u8, suffix: []const u8) !std.Io.File {
         return std.Io.File.stdout();
     }
     const len = fname.?.len + suffix.len;
-    if (len >= 1024) @panic("filename to long");
+    if (len >= 1024) errexit("filename to long, max 1024 was {}", len);
     var name: [1024]u8 = undefined;
     std.mem.copyForwards(u8, name[0..], fname.?);
     std.mem.copyForwards(u8, name[fname.?.len..], suffix);

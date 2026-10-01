@@ -41,8 +41,6 @@ pub fn text_latency(
         else => .{ "s", "seconds/op", 1e-9 },
     };
 
-    const vbar, const hbar, const plus = if (opts.ascii) .{ "|", "-", "+" } else .{ "\u{2502}", "\u{2500}", "\u{253c}" };
-
     if (opts.with_header) {
         try writer.print(text_header, .{
             .name = title,
@@ -55,64 +53,7 @@ pub fn text_latency(
         try writer.writeByte('\n');
     }
 
-    try writer.print(
-        "{[name]s: <[name_len]} {[vbar]s}" ++
-            "{[calls]s: >11} " ++
-            "{[total]s: >8} " ++
-            "{[avg]s: >7} {[vbar]s}" ++
-            "{[min]s: >7} " ++
-            "{[p25]s: >7} " ++
-            "{[p50]s: >7} " ++
-            "{[p75]s: >7} " ++
-            "{[max]s: >7}\n",
-        .{
-            .name = "fn",
-            .name_len = name_len + 1,
-            .calls = "calls",
-            .total = "seconds",
-            .avg = "mean",
-            .min = "best",
-            .p25 = "p75",
-            .p50 = "p50",
-            .p75 = "p25",
-            .max = "worst",
-            .vbar = vbar,
-        },
-    );
-
-    try write_n(writer, hbar, name_len + 2);
-    try write_n(writer, plus, 1);
-    try write_n(writer, hbar, 12 + 9 + 8);
-    try write_n(writer, plus, 1);
-    try write_n(writer, hbar, 5 * 8 - 1);
-    try writer.writeByte('\n');
-
-    for (trials) |stats| {
-        try writer.print(
-            "{[name]s: <[name_len]} {[vbar]s}" ++
-                "{[calls]d: >11} " ++
-                "{[total]d: >8.2} " ++
-                "{[avg]d: >7.2} {[vbar]s}" ++
-                "{[min]d: >7.2} " ++
-                "{[p25]d: >7.2} " ++
-                "{[p50]d: >7.2} " ++
-                "{[p75]d: >7.2} " ++
-                "{[max]d: >7.2}\n",
-            .{
-                .name = stats.trial.name,
-                .name_len = name_len + 1,
-                .calls = stats.trial_calls,
-                .total = stats.trial_nanos / 1e9,
-                .avg = stats.call_avg_ns * factor,
-                .min = stats.call_min_ns * factor,
-                .p25 = stats.percentiles[75] * factor,
-                .p50 = stats.percentiles[50] * factor,
-                .p75 = stats.percentiles[25] * factor,
-                .max = stats.call_max_ns * factor,
-                .vbar = vbar,
-            },
-        );
-    }
+    try draw_text_tables(writer, trials, opts, name_len, lat_conv, factor);
     try writer.flush();
 }
 
@@ -136,9 +77,6 @@ pub fn text_thruput(
         else => .{ "Gops", "Gops/sec", 1e0 },
     };
 
-    const vbar, const hbar, const plus =
-        if (opts.ascii) .{ "|", "-", "+" } else .{ "\u{2502}", "\u{2500}", "\u{253c}" };
-
     if (opts.with_header) {
         try writer.print(text_header, .{
             .name = title,
@@ -150,6 +88,27 @@ pub fn text_thruput(
         });
         try writer.writeByte('\n');
     }
+
+    try draw_text_tables(writer, trials, opts, name_len, thru_conv, factor);
+    try writer.flush();
+}
+
+fn lat_conv(x: f64, y: f64) f64 {
+    return x * y;
+}
+fn thru_conv(x: f64, y: f64) f64 {
+    return y / x;
+}
+
+fn draw_text_tables(
+    writer: *std.Io.Writer,
+    trials: []const root.TrialStats,
+    opts: root.TextOpts,
+    name_len: usize,
+    conv: fn (f64, f64) f64,
+    factor: f64,
+) !void {
+    const vbar, const hbar, const plus = if (opts.ascii) .{ "|", "-", "+" } else .{ "\u{2502}", "\u{2500}", "\u{253c}" };
 
     try writer.print(
         "{[name]s: <[name_len]} {[vbar]s}" ++
@@ -199,17 +158,16 @@ pub fn text_thruput(
                 .name_len = name_len + 1,
                 .calls = stats.trial_calls,
                 .total = stats.trial_nanos / 1e9,
-                .avg = factor / stats.call_avg_ns,
-                .min = factor / stats.call_min_ns,
-                .p25 = factor / stats.percentiles[75],
-                .p50 = factor / stats.percentiles[50],
-                .p75 = factor / stats.percentiles[25],
-                .max = factor / stats.call_max_ns,
+                .avg = conv(stats.call_avg_ns, factor),
+                .min = conv(stats.call_min_ns, factor),
+                .p25 = conv(stats.percentiles[75], factor),
+                .p50 = conv(stats.percentiles[50], factor),
+                .p75 = conv(stats.percentiles[25], factor),
+                .max = conv(stats.call_max_ns, factor),
                 .vbar = vbar,
             },
         );
     }
-    try writer.flush();
 }
 
 pub fn text_perf_cpu(

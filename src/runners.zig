@@ -9,6 +9,7 @@ const time = @import("time.zig");
 const util = @import("util.zig");
 const sys = @import("sys.zig");
 const ArgsType = @import("trial.zig").ArgsType;
+const errexit = util.errexit;
 
 const Sample = root.Sample;
 const Env = root.Env;
@@ -38,7 +39,7 @@ inline fn sweep(comptime argstype: ArgsType, func: anytype, args: anytype) void 
                 switch (argstype) {
                     .slice_naked, .ptrarray_naked => call(func, .{a.*}),
                     .slice_tuple, .ptrarray_tuple => call(func, a.*),
-                    else => @panic("unexpected type"),
+                    else => errexit("unexpected type: {}", argstype),
                 }
             }
         },
@@ -124,7 +125,9 @@ pub noinline fn timed_sample(
         .{},
         set_bool,
         .{ &start, &done, nanos },
-    ) catch @panic("could not spawn");
+    ) catch |e| {
+        errexit("could not spawn timing thread: {}", e);
+    };
     errdefer {
         start.store(true, .release);
         done.store(true, .release);

@@ -3,6 +3,7 @@ const clock_nanosleep = std.os.linux.clock_nanosleep;
 const clock_gettime = std.os.linux.clock_gettime;
 const timespec = std.os.linux.timespec;
 const tt = std.testing;
+const util = @import("util.zig");
 
 pub const ClockSource = enum { monotonic, tsc };
 
@@ -98,7 +99,7 @@ pub fn pause_until(stop_nanos: u64) void {
 pub fn now() u64 {
     var ts: timespec = undefined;
     const ret = clock_gettime(.MONOTONIC_RAW, &ts);
-    if (ret != 0) @panic("clock_gettime failed");
+    if (ret != 0) util.errexit("clock_gettime failed: {}", ret);
     return nanos_from_timespec(ts);
 }
 

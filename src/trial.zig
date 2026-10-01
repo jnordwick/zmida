@@ -114,65 +114,13 @@ pub const Trial = struct {
             func,
             args,
         ));
-
-        // timed
-        verbose(1, " samples {d} sweeps @ {d} calls", .{
+        try this.bycount_samples(
+            func,
+            args,
             this.def.count.trial_samples,
-            this.def.count.sample_sweeps * this.calls_per_sweep,
-        });
-        for (0..this.def.count.trial_samples) |i| {
-            verbose(2, " {d}", i + 1);
-            var res = try runners.count_sample(
-                argstype,
-                null,
-                this.def.count.sample_sweeps,
-                func,
-                args,
-            );
-            res.ord = i;
-            try this.data.append(res);
-        }
-        verbose(1, "\n", .{});
-
-        // perf
-        if (Env.perf_cpu) {
-            verbose(
-                1,
-                "Trial {s} cpu perf_events. {d} sweeps\n",
-                .{ this.name, this.def.count.perf_sweeps },
-            );
-            var panel = try util.make_cpu_panel(Env.alloc);
-            const res = try runners.count_sample(
-                argstype,
-                &panel,
-                this.def.count.perf_sweeps,
-                func,
-                args,
-            );
-            this.perf.cpu_calls = res.calls;
-            try panel.read(0, this.perf.cpu.as_payload());
-            panel.deinit();
-        }
-
-        if (Env.perf_mem) {
-            verbose(
-                1,
-                "Trial {s} meme perf_events. {d} sweeps\n",
-                .{ this.name, this.def.count.perf_sweeps },
-            );
-            var panel = try util.make_mem_panel(Env.alloc);
-            const res = try runners.count_sample(
-                argstype,
-                &panel,
-                this.def.count.perf_sweeps,
-                func,
-                args,
-            );
-            this.perf.mem_calls = res.calls;
-            try panel.read(0, this.perf.memr.as_payload());
-            try panel.read(1, this.perf.memw.as_payload());
-            panel.deinit();
-        }
+            this.def.count.sample_sweeps,
+            this.def.count.perf_sweeps,
+        );
     }
 
     pub fn byadapt(this: *@This(), func: anytype, args: anytype) !void {
@@ -199,14 +147,25 @@ pub const Trial = struct {
         this.def.adapt.est_sample_sweeps = @intFromFloat(ftimesweeps);
         this.def.adapt.est_perf_sweeps = @intFromFloat(fperfsweeps);
 
+        try this.bycount_samples(
+            func,
+            args,
+            this.def.adapt.trial_samples,
+            this.def.adapt.est_sample_sweeps,
+            this.def.adapt.est_perf_sweeps,
+        );
+    }
+
+    fn bycount_samples(this: *@This(), func: anytype, args: anytype, trial_samples: u64, sample_sweeps: u64, perf_sweeps: u64) !void {
+        const argstype = util.argstype_of(@TypeOf(args));
         // timed
         verbose(1, "timing samples {d} sweeps @ {d} calls", .{
-            this.def.adapt.trial_samples,
-            this.def.adapt.est_sample_sweeps * this.calls_per_sweep,
+            trial_samples,
+            sample_sweeps * this.calls_per_sweep,
         });
-        for (0..this.def.adapt.trial_samples) |i| {
+        for (0..trial_samples) |i| {
             verbose(2, " {d}", i + 1);
-            var res = try runners.count_sample(argstype, null, this.def.adapt.est_sample_sweeps, func, args);
+            var res = try runners.count_sample(argstype, null, sample_sweeps, func, args);
             res.ord = i;
             try this.data.append(res);
         }
@@ -217,13 +176,13 @@ pub const Trial = struct {
             verbose(
                 1,
                 "Trial {s} cpu perf_events. {d} sweeps\n",
-                .{ this.name, this.def.adapt.est_perf_sweeps },
+                .{ this.name, perf_sweeps },
             );
             var panel = try util.make_cpu_panel(Env.alloc);
             const res = try runners.count_sample(
                 argstype,
                 &panel,
-                this.def.adapt.est_perf_sweeps,
+                perf_sweeps,
                 func,
                 args,
             );
@@ -235,14 +194,14 @@ pub const Trial = struct {
         if (Env.perf_mem) {
             verbose(
                 1,
-                "Trial {s} meme perf_events. {d} sweeps\n",
-                .{ this.name, this.def.adapt.est_perf_sweeps },
+                "Trial {s} mem perf_events. {d} sweeps\n",
+                .{ this.name, perf_sweeps },
             );
             var panel = try util.make_mem_panel(Env.alloc);
             const res = try runners.count_sample(
                 argstype,
                 &panel,
-                this.def.adapt.est_perf_sweeps,
+                perf_sweeps,
                 func,
                 args,
             );
