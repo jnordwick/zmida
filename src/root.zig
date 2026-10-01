@@ -38,6 +38,7 @@ pub const Env = struct {
     pub var perf_cpu: bool = false;
     pub var perf_mem: bool = false;
     pub var already_init: bool = false;
+    pub var orig_cpu_set: ?sys.cpu_set = null;
 
     pub fn check_init() void {
         if (!already_init) panic("Did not zmida.init()", .{});
@@ -308,6 +309,11 @@ pub fn init(pinit: std.process.Init, env_opts: EnvOpts) void {
     };
     Env.pin_cpu = opts.pin_cpu;
     if (Env.pin_cpu) |cpu| {
+        var orig_set: sys.cpu_set = .{};
+        sys.sched_getaffinity(0, &orig_set) catch |e| {
+            panic("count no get cpu affinity: {}\n", .{e});
+        };
+        Env.orig_cpu_set = orig_set;
         const cpu_set: sys.cpu_set = .init(cpu);
         sys.sched_setaffinity(0, &cpu_set) catch |e| {
             panic("could not set cpu affinity to {}: {}\n", .{ cpu, e });

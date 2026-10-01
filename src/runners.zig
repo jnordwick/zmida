@@ -131,7 +131,10 @@ pub noinline fn timed_sample(
         .{ &start, &done, nanos },
     ) catch @panic("could not spawn");
     const tid: sys.id_t = @intCast(timer_thread.getHandle());
-    try sys.setpriority(.PROCESS, tid, 10);
+    if (Env.orig_cpu_set) |cs| {
+        try sys.sched_setaffinity(tid, &cs);
+    }
+    try sys.setpriority(.PROCESS, tid, 19);
     var timer: Timer = undefined;
     if (panel) |p| {
         try p.open();

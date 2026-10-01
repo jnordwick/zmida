@@ -49,7 +49,6 @@ This are the next few thigs I want to work on:
 
 - make some simple functions for most basic "bench this"
 - better documentation
-- unpin timing thread
 
 * AI
 
