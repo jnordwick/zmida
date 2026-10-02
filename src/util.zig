@@ -24,8 +24,6 @@ pub fn verbose(lev: u32, comptime fmt: []const u8, args: anytype) void {
 
 pub fn debug_warn() void {
     // Test the ORIGINAL io, not Env.io.
-    const stderr = std.Io.File.stderr();
-    stderr.writeStreamingAll(Env.io, "DEBUG WARN IO\n") catch {};
     if (@import("builtin").mode == .Debug and Env.debug_warn) {
         verbose(0, "!!! WARNING !!! Compiled in debug mode.\n", .{});
         Env.debug_warn = false;
@@ -256,6 +254,60 @@ pub fn make_mem_panel(alloc: Allocator) !perf.PerfPanel {
     return panel;
 }
 
+fn read_cpu_file(x: u32, name: []const u8, dest: []u8) ?[]const u8 {
+    var path_buf: [96]u8 = undefined;
+    const path = std.fmt.bufPrint(
+        &path_buf,
+        "/sys/devices/system/cpu/cpu{d}/cpufreq/{s}",
+        .{ x, name },
+    ) catch return null;
+    const file = std.Io.Dir.openFileAbsolute(Env.io, path, .{}) catch return null;
+    defer file.close(Env.io);
+    const n = file.readPositionalAll(Env.io, dest, 0) catch return null;
+    return std.mem.trim(u8, dest[0..n], " \t\r\n");
+}
+
+pub fn check_cpu_files(x: u32) void {
+    var drv_buf: [32]u8 = undefined;
+    var gov_buf: [32]u8 = undefined;
+    var epp_buf: [32]u8 = undefined;
+    const driver = read_cpu_file(x, "scaling_driver", &drv_buf);
+    const gov = read_cpu_file(x, "scaling_governor", &gov_buf);
+    const epp = read_cpu_file(x, "energy_performance_preference", &epp_buf);
+
+    const cannot_read = "<cannot read>";
+    verbose(2, "scaling_driver: {s}\n", driver orelse cannot_read);
+    verbose(2, "scaling_governor: {s}\n", gov orelse cannot_read);
+    verbose(2, "energy_performance_preference: {s}\n", epp orelse cannot_read);
+
+    // with these drivers the EPP hint decides frequency; the governor name is misleading
+    const epp_driven = if (driver) |d|
+        std.mem.eql(u8, d, "intel_pstate") or std.mem.eql(u8, d, "amd-pstate-epp")
+    else
+        false;
+
+    if (gov) |g| {
+        if (!epp_driven and !std.mem.eql(u8, g, "performance")) {
+            verbose(0, "!!! WARNING !!! cpu {d}: scaling governor is {s}, results might be affected\n", .{ x, g });
+        }
+    }
+    if (epp) |e| {
+        // power / balance_power are bad; balance_performance and default are fine
+        if (std.mem.indexOf(u8, e, "power") != null) {
+            verbose(0, "!!! WARNING !!! cpu {d}: energy performance pref is {s}, results might be affected\n", .{ x, e });
+        }
+    }
+}
+
+fn read_file(io: std.Io, path: []const u8, dest: []u8) ![]u8 {
+    const file = try std.Io.Dir.openFileAbsolute(io, path, .{});
+    defer file.close(io);
+
+    const bytes_read = try file.readPositionalAll(io, dest, 0);
+    const ret = std.mem.trim(u8, dest[0..bytes_read], " \t\n");
+    return @constCast(ret);
+}
+
 test "alrefs" {
     _ = std.testing.refAllDecls(@This());
 }
@@ -291,4 +343,17 @@ test split {
     r = split("", '=');
     try testing.expectEqualStrings("", r[0]);
     try testing.expectEqualStrings("", r[1]);
+}
+
+test read_file {
+    const fname = "/sys/devices/system/cpu/cpu0/cpufreq/affected_cpus";
+    var buf: [32]u8 = @splat(0);
+    const t = try read_file(std.testing.io, fname, &buf);
+    try std.testing.expectEqualStrings("0", t);
+}
+
+test check_cpu_files {
+    if (true) return error.SkipZigTest;
+    Env.io = std.testing.io;
+    check_cpu_files(0);
 }

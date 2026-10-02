@@ -116,6 +116,17 @@ pub const GnuplotOpts = struct {
     title: ?[]const u8 = null,
 };
 
+pub fn bench(pinit: *const std.process.Init, funcs: anytype, args: anytype) !void {
+    try bench_ex(null, pinit, .{}, .byadapt(.{}), funcs, args);
+}
+
+pub fn bench_ex(name: ?[]const u8, pinit: *const std.process.Init, env_opts: EnvOpts, config: Config, funcs: anytype, args: anytype) !void {
+    if (!Env.already_init) init(pinit, env_opts);
+    var study = try Study.run(name, config, funcs, args);
+    defer study.deinit();
+    try study.write_text(null, .{ .mode = .lat });
+}
+
 pub const Study = struct {
     name: []const u8,
     def: TrialDef,
@@ -324,6 +335,7 @@ pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
             errexit("could not set cpu affinity to {}: {}\n", .{ cpu, e });
         };
         verbose(1, "set cpu affinity to {}\n", .{cpu});
+        util.check_cpu_files(cpu);
     }
     Env.set_prio = opts.set_prio;
     if (Env.set_prio) |prio| {

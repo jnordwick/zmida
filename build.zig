@@ -1,5 +1,8 @@
 const std = @import("std");
 
+const ResolvedTarget = std.Build.ResolvedTarget;
+const OptimizeMode = std.builtin.OptimizeMode;
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -9,6 +12,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
+    // main.zig
     const exe = b.addExecutable(.{
         .name = "zmida",
         .root_module = b.createModule(.{
@@ -20,9 +24,7 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-
     b.installArtifact(exe);
-
     const run_step = b.step("run", "Run the app");
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);
@@ -31,6 +33,11 @@ pub fn build(b: *std.Build) void {
         run_cmd.addArgs(args);
     }
 
+    // examples
+    //add_example(b, mod, &target, &optimize, "basic");
+    add_example(b, mod, &target, &optimize, "simple");
+
+    // build test
     const mod_tests = b.addTest(.{
         .root_module = mod,
     });
@@ -42,4 +49,32 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
+}
+
+fn add_example(
+    b: *std.Build,
+    mod: *std.Build.Module,
+    target: *const ResolvedTarget,
+    optimize: *const OptimizeMode,
+    name: anytype,
+) void {
+    const example = b.addExecutable(.{
+        .name = name,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("example/" ++ name ++ ".zig"),
+            .target = target.*,
+            .optimize = optimize.*,
+            .imports = &.{
+                .{ .name = "zmida", .module = mod },
+            },
+        }),
+    });
+    b.installArtifact(example);
+    const example_step = b.step("ex-" ++ name, "Run " ++ name ++ " example");
+    const example_cmd = b.addRunArtifact(example);
+    example_step.dependOn(&example_cmd.step);
+    example_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        example_cmd.addArgs(args);
+    }
 }
