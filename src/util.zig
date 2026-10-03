@@ -74,8 +74,6 @@ pub fn parse_opts(pinit: *const std.process.Init, env_opts: root.EnvOpts) root.E
             opts.verbose = v;
             // directly set for verbose to get trace output from option parsing
             Env.verbose = v;
-        } else if (str_in(name, .{ "-w", "--warn" })) {
-            opts.debug_warn = val.len == 0 or parse_bool(val);
         } else if (str_in(name, .{ "-t", "--tsc" })) {
             opts.use_tsc = val.len == 0 or parse_bool(val);
         } else if (str_in(name, .{ "-c", "--cpu" })) {
@@ -178,7 +176,7 @@ pub inline fn argstype_of(x: type) ArgsType {
             }
         },
         .@"struct" => |s| {
-            if (@hasDecl(x, "_zmida_generator_")) return .generator;
+            if (@hasDecl(x, "__zm__generator__")) return .generator;
             if (s.is_tuple) return .single_tuple;
             @compileError("wrap single struct in a tuple, similar to @call");
         },

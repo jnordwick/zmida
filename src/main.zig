@@ -1,7 +1,7 @@
 const std = @import("std");
 const zm = @import("zmida");
 
-pub const zm__call_mod = std.builtin.CallModifier.always_inline;
+pub const __zm__callmod__ = std.builtin.CallModifier.always_inline;
 
 pub fn main(init: std.process.Init) !void {
     const funcs = .{ logtgamma, lgamma, logtgamma, lgamma };

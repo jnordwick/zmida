@@ -1,5 +1,6 @@
 const std = @import("std");
 
+/// generate n random numbers in interval [from, to], using supplied random seed.
 pub fn uniform(comptime T: type, comptime n: u64, from: T, to: T, seed: u64) [n]T {
     var arr: [n]T = undefined;
     var rand: std.Random.Xoshiro256 = .init(seed);
@@ -14,6 +15,7 @@ pub fn uniform(comptime T: type, comptime n: u64, from: T, to: T, seed: u64) [n]
     return arr;
 }
 
+/// join two arrays into array of 2-tuples. Useful for functions that take two arguments.
 pub fn tie2(comptime T: type, comptime n: u64, x: [n]T, y: [n]T) [n]struct { T, T } {
     const arr_t = struct { T, T };
     var arr: [n]arr_t = undefined;
@@ -23,6 +25,7 @@ pub fn tie2(comptime T: type, comptime n: u64, x: [n]T, y: [n]T) [n]struct { T, 
     return arr;
 }
 
+/// like tie2, but prepends each tuple with type, like .{u32, 1, 2}
 pub fn tie2t(comptime T: type, comptime n: u64, x: [n]T, y: [n]T) [n]struct { comptime type = T, T, T } {
     const arr_t = struct { comptime type = T, T, T };
     var arr: [n]arr_t = undefined;
@@ -32,10 +35,11 @@ pub fn tie2t(comptime T: type, comptime n: u64, x: [n]T, y: [n]T) [n]struct { co
     return arr;
 }
 
-// for ints
+/// integer inclusive range generator in [begin, end] by step
 pub fn Range(T: type) type {
     return struct {
-        pub const _zmida_generator_ = true;
+        /// so the runner knows the this is a generator and not an argument.
+        pub const __zm__generator__ = true;
         len: u64,
         cur: T,
         begin: T,
@@ -62,10 +66,11 @@ pub fn Range(T: type) type {
     };
 }
 
-// for floats
+/// floating point linear space generator.
+/// generates n points in [begin, end]
 pub fn LinSpace(T: type) type {
     return struct {
-        pub const _zmida_generator_ = true;
+        pub const __zm__generator__ = true;
         len: u64,
         cur: T,
         begin: T,
@@ -91,10 +96,6 @@ pub fn LinSpace(T: type) type {
             return .{tmp};
         }
     };
-}
-
-test {
-    std.testing.refAllDecls(@This());
 }
 
 test "Range: divisible" {
@@ -165,4 +166,64 @@ test "tie2t" {
     try std.testing.expectEqual(u64, result[0][0]);
     try std.testing.expectEqual(@as(u64, 1), result[0][1]);
     try std.testing.expectEqual(@as(u64, 10), result[0][2]);
+}
+
+fn TieType(comptime tuple: type) type {
+    const si = @typeInfo(tuple).@"struct";
+    const N = si.fields.len;
+    var ftypes: [N]type = undefined;
+
+    var arr_len = 0;
+    inline for (0..N) |i| {
+        switch (@typeInfo(si.fields[i].type)) {
+            .array => |t| {
+                if (arr_len != 0 and arr_len != t.len)
+                    @compileError("Array lengths must match");
+                arr_len = t.len;
+            },
+            else => {},
+        }
+    }
+
+    inline for (0..N) |i| {
+        ftypes[i] = switch (@typeInfo(si.fields[i].type)) {
+            .array => |t| t.child,
+            else => si.fields[i].type,
+        };
+    }
+    const TupType = @Tuple(&ftypes);
+    return [arr_len]TupType;
+}
+
+/// ties arrays and auto-broadcasts any scalars
+/// x: a tuple of arrays and anything else is considered a scalar. all array must be same length.
+pub fn tie(x: anytype) TieType(@TypeOf(x)) {
+    const RetType = TieType(@TypeOf(x));
+    const fields = @typeInfo(@TypeOf(x)).@"struct".fields;
+
+    var ret: RetType = undefined;
+    inline for (0..ret.len) |i| {
+        inline for (0..fields.len) |f| {
+            ret[i][f] = switch (@typeInfo(fields[f].type)) {
+                .array => x[f][i],
+                else => x[f],
+            };
+        }
+    }
+    return ret;
+}
+
+test tie {
+    const p1 = [_]f32{ 2.718, 7.389, 20.055 };
+    const tuple = .{ @as(f32, 2.718), p1 };
+    const t = tie(tuple);
+
+    for (0..p1.len) |i| {
+        const r = @call(.auto, log, t[i]);
+        try std.testing.expectApproxEqAbs(@as(f32, @floatFromInt(i + 1)), r, 0.1);
+    }
+}
+
+fn log(b: f32, x: f32) f32 {
+    return std.math.log(f32, b, x);
 }

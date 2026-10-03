@@ -5,8 +5,8 @@ pub fn main(init: std.process.Init) !void {
     const funcs = .{ logtgamma, lgamma };
     const args = zm.gen.uniform(f64, 100, 0, 10, 0);
 
+    try zm.bench(&init, logtgamma, &args);
     try zm.bench(&init, funcs, &args);
-    try zm.bench_ex("simple", &init, .{ .verbose = 0 }, .bycount(.{}), funcs, &args);
 }
 
 fn lgamma(x: f64) f64 {

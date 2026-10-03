@@ -20,11 +20,12 @@ const debug_warn = util.debug_warn;
 const verbose = util.verbose;
 const errexit = util.errexit;
 
+/// The environment for the runners. Don't touch this. Use EnvOpts instead.
 pub const Env = struct {
-    pub const call_mod: std.builtin.CallModifier = b: {
+    pub const callmod: std.builtin.CallModifier = b: {
         const that = @import("root");
-        const ne = @hasDecl(that, "zm__call_mod");
-        break :b if (ne) that.zm__call_mod else .auto;
+        const ne = @hasDecl(that, "__zm__callmod__");
+        break :b if (ne) that.__zm__callmod__ else .auto;
     };
     pub var alloc: Allocator = undefined;
     pub var io: Io = undefined;
@@ -43,41 +44,70 @@ pub const Env = struct {
     }
 };
 
+/// Global options for all runners
 pub const EnvOpts = struct {
-    debug_warn: bool = true,
+    /// verbose level. 0 is silent, 1 is normal, 2 is trace
     verbose: u32 = 1,
+    /// use RDTSC if available
     use_tsc: bool = true,
+    /// pin to a cpu
     pin_cpu: ?u32 = null,
+    /// set priority niceness level
     set_prio: ?i32 = null,
+    /// collect cpu instruction performance counters
     perf_cpu: bool = false,
+    /// collect cache performance counters
     perf_mem: bool = false,
 };
 
+/// trial based on the number of calls to execute
 pub const CountConfig = struct {
+    /// number of calls in warmup
     warmup_calls: u32 = 100_000,
+    /// number of samples in a trial
     trial_samples: u32 = 10_000,
+    /// number of calls in a sample
     sample_calls: u32 = 1_000,
+    /// number of calls in a performance counter collection
     perf_calls: u32 = 1_000_000,
 };
 
+/// trial based on amount of time for each trial. best used for fewer samples over longer
+/// periods of time.  The longer samples might help if you the OS aggressive throttles the
+/// cpy between sample runs.
 pub const TimedConfig = struct {
+    /// millisecond in warmup
     warmup_millis: u32 = 1000,
+    /// number of samples in a trial
     trial_samples: u32 = 100,
+    /// total milliseonds in trial (sample millis = trials millis / numer of samples)
     trial_millis: u32 = 2000,
+    /// number milliseconds in a performance counter collection
     perf_millis: u32 = 2000,
 };
 
+/// trial based on time per trial, but an estimate is made for how many calls that takes,
+/// and the trial is run by count. this has a little less machinery and doesn't interfere
+/// with execution as much or on a machine with limited resources. This is the default.
 pub const AdaptConfig = struct {
+    /// milliseconds in warmup
     warmup_millis: u32 = 1000,
+    /// number of samples in a trial
     trial_samples: u32 = 100,
+    /// total milliseonds in trial (sample millis = trials millis / numer of samples)
     trial_millis: u32 = 2000,
+    /// number milliseconds in a performance counter collection
     perf_millis: u32 = 2000,
 };
 
+/// one of the trial configs.
 pub const Config = union(enum) {
     timed: TimedConfig,
     count: CountConfig,
     adapt: AdaptConfig,
+
+    /// default is adaptive
+    pub const default = Config.byadapt(.{});
 
     pub fn bycount(config: CountConfig) Config {
         return .{ .count = config };
@@ -92,47 +122,83 @@ pub const Config = union(enum) {
     }
 };
 
+/// options for text table output
 pub const TextOpts = struct {
+    /// display mode, by latency or throughput
     mode: enum { lat, thru } = .lat,
+    /// use ascii, false allows use of box and color
     ascii: bool = true,
+    /// print info header before tables
     with_header: bool = true,
+    /// print performance counters, if they were recorded
     with_perf: bool = true,
 };
 
+/// print timing summary in structured format, numbers are per call (latency)
 pub const SummaryOpts = struct {
+    /// file format, currently only csv-like supporter (json coming)
     format: enum { csv } = .csv,
+    /// separator (only used for csv)
     separator: u8 = ',',
+    /// print header row
     with_header: bool = true,
+    /// also print performance counter summaries too
     with_perf: bool = true,
+    /// percentile columns to include (0 = min, 100 = max)
     pctiles: []const u32 = &[_]u32{ 0, 25, 50, 75, 100 },
 };
 
+/// print all unaggregared sample data
 pub const SamplesOpts = struct {
+    /// file format, currently only csv-like supporter (json coming)
     format: enum { csv } = .csv,
+    /// separator (only used for csv)
     separator: u8 = ',',
 };
 
+/// gnuplot output
 pub const GnuplotOpts = struct {
+    /// plot title
     title: ?[]const u8 = null,
 };
 
+/// quick shot bench. Uses the default value for adaptve trials
+/// pinit: the init from main. The only parts that matter are gpa, io, and args.
+/// funcs: either an indivdual function or a tuple of functions
+/// args: any appropropriate args argument. see the readme for a description.
+/// prints text tables to stdout
 pub fn bench(pinit: *const std.process.Init, funcs: anytype, args: anytype) !void {
-    try bench_ex(null, pinit, .{}, .byadapt(.{}), funcs, args);
+    try bench_ex(pinit, .{}, .byadapt(.{}), funcs, args);
 }
 
-pub fn bench_ex(name: ?[]const u8, pinit: *const std.process.Init, env_opts: EnvOpts, config: Config, funcs: anytype, args: anytype) !void {
+/// a slightly extended simple interface.
+/// pinit: the init from main. The only parts that matter are gpa, io, and args.
+/// env_opts: global options overrides
+/// config: trial configuration
+/// funcs: either an indivdual function or a tuple of functions
+/// args: any appropropriate args argument. see the readme for a description.
+/// prints text tables to stdout
+pub fn bench_ex(pinit: *const std.process.Init, env_opts: EnvOpts, config: Config, funcs: anytype, args: anytype) !void {
     if (!Env.already_init) init(pinit, env_opts);
-    var study = try Study.run(name, config, funcs, args);
+    const ftuple = if (util.is_tuple(@TypeOf(funcs))) funcs else .{funcs};
+    var study = try Study.run(null, config, ftuple, args);
     defer study.deinit();
     try study.write_text(null, .{ .mode = .lat });
 }
 
+/// A collection of trials with the same configuration over the same arguments
+/// you create a study by using the run() method
 pub const Study = struct {
+    /// only used for output
     name: []const u8,
+    /// shared trial definition
     def: TrialDef,
+    /// results already run trials
     trials: ArrayList(Trial),
+    /// statistics generated from trials
     stats: ArrayList(TrialStats),
 
+    /// clean up memory and any open handles
     pub fn deinit(this: @This()) void {
         for (this.trials.items) |*t| {
             t.deinit();
@@ -141,7 +207,12 @@ pub const Study = struct {
         this.stats.deinit();
     }
 
+    /// create and run a study
+    /// name: used for output, null uses a default name
+    /// config: a trial configuration
+    /// funcs:
     pub fn run(name: ?[]const u8, config: Config, funcs: anytype, args: anytype) !Study {
+        const functuple = if (util.is_tuple(@TypeOf(funcs))) funcs else .{funcs};
         Env.check_init();
         var this = Study{
             .name = name orelse "zmida",
@@ -174,10 +245,10 @@ pub const Study = struct {
                 verbose(1, "\t- perf millis: {d}\n", .{c.perf_millis});
             },
         }
-        inline for (0..funcs.len) |i| {
-            verbose(1, "Running trial {d}/{d}\n", .{ i + 1, funcs.len });
+        inline for (0..functuple.len) |i| {
+            verbose(1, "Running trial {d}/{d}\n", .{ i + 1, functuple.len });
             var t = Trial.init(this.def, util.get_fname(funcs[i]));
-            try t.run(funcs[i], args);
+            try t.run(functuple[i], args);
             try this.trials.append(t);
         }
         return this;
@@ -217,6 +288,7 @@ pub const Study = struct {
         }
     }
 
+    /// run statistics for already run trials
     pub fn statistics(this: *@This()) !void {
         if (this.stats.items.len != 0) return;
         verbose(1, "Generating stats for study {s}\n", this.name);
@@ -226,6 +298,9 @@ pub const Study = struct {
         }
     }
 
+    /// write out results in text tables
+    /// fname: filename or stdout if null
+    /// toptts: output options
     pub fn write_text(this: *@This(), fname: ?[]const u8, topts: TextOpts) !void {
         const opts = topts;
         try this.statistics();
@@ -250,6 +325,9 @@ pub const Study = struct {
         }
     }
 
+    /// write ingestable format of summary data (currently only support csv/tsv)
+    /// fname: filename or null for stdout
+    /// sopts: output options
     pub fn write_summary(this: *@This(), fname: ?[]const u8, sopts: SummaryOpts) !void {
         const opts = sopts;
         try this.statistics();
@@ -259,6 +337,9 @@ pub const Study = struct {
         try out.csv_summary(&writer.interface, this.stats.items, opts);
     }
 
+    /// write ingestable format of detailed sample data (no performance data)
+    /// fname: filename or null for stdout
+    /// sopts: output options
     pub fn write_samples(this: *@This(), fname: ?[]const u8, sopts: SamplesOpts) !void {
         const opts = sopts;
         try this.statistics();
@@ -268,6 +349,9 @@ pub const Study = struct {
         try out.csv_samples(&writer.interface, this.stats.items, opts);
     }
 
+    /// write gnuplot of timing summary. the file includes both gnuplot instructions and data.
+    /// fname: filename or null for stdout
+    /// opts: output options
     pub fn write_gnuplot(this: *@This(), fname: ?[]const u8, opts: GnuplotOpts) !void {
         try this.statistics();
         const file = try util.get_file(fname, ".gp");
@@ -276,6 +360,10 @@ pub const Study = struct {
         try out.gnuplot(&writer.interface, this.stats.items, opts);
     }
 
+    /// write gnuplot of performance counter data.
+    /// the file includes both gnuplot instructions and data.
+    /// fname: filename or null for stdout
+    /// opts: output options
     pub fn write_gnuplot_perf(this: *@This(), fname: ?[]const u8, opts: GnuplotOpts) !void {
         try this.statistics();
         const file = try util.get_file(fname, "-perf.gp");
@@ -293,6 +381,7 @@ pub const Sample = struct {
     nanos: f64 = 0,
 };
 
+/// A single sample of the performance counters.
 pub const PerfSample = struct {
     ord: u64 = 0,
     cpu_calls: u64 = 0,
@@ -303,6 +392,10 @@ pub const PerfSample = struct {
     memw: perf.MemWriteCounters = .{},
 };
 
+/// Must be called to intialize the library. This checks for clocks, pins the cpu,
+/// sets niceness, and processes command line switches.
+/// pinit: The int from the main. only 3 fields are required: gpa, io. and minimal.args.
+/// env_opts: override options. command line switches take precendece.
 pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
     if (Env.already_init) errexit("Can only call zminda.init once", .{});
     Env.already_init = true;
@@ -310,11 +403,10 @@ pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
     Env.alloc = pinit.gpa;
 
     const opts = util.parse_opts(pinit, env_opts);
-    Env.debug_warn = opts.debug_warn;
     debug_warn();
 
-    if (Env.call_mod != .auto) {
-        verbose(1, "Overriding @call modifier {}\n", .{Env.call_mod});
+    if (Env.callmod != .auto) {
+        verbose(1, "Overriding @call modifier {}\n", .{Env.callmod});
     }
 
     Env.verbose = opts.verbose;

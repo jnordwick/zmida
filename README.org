@@ -126,3 +126,14 @@ that is what really messes things up.
 
 [[./gamma-perf.png]]
 
+* Ten Things I Hate About You
+
+My ongoing love-hate thing with zig:
+
+- [ ] a way per test, to signal this should be compiled and attached in in the documentation
+  but is not a test, it is an example
+- [ ] anytype still sucks. I want `fn func(x: []const anytype)` as a minimum
+- [ ] io is painfully overdone. Zig Io is J2EE Spring for C.
+- [ ] io is painfully overdone. why do i need to it to get time?
+- [ ] casting casting everywhere and getting worse by the release
+- [ ] no doc comment syntax (we'll spacings and other things, but not doc comments)

@@ -36,6 +36,7 @@ pub fn build(b: *std.Build) void {
     // examples
     //add_example(b, mod, &target, &optimize, "basic");
     add_example(b, mod, &target, &optimize, "simple");
+    add_example(b, mod, &target, &optimize, "gendata");
 
     // build test
     const mod_tests = b.addTest(.{

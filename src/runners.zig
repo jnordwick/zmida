@@ -21,7 +21,7 @@ const AtomicBool = std.atomic.Value(bool);
 
 inline fn call(func: anytype, arg: anytype) void {
     dno(&arg);
-    dno(@call(Env.call_mod, func, arg));
+    dno(@call(Env.callmod, func, arg));
 }
 
 inline fn sweep(comptime argstype: ArgsType, func: anytype, args: anytype) void {
@@ -200,7 +200,7 @@ test "count_sample single tuple" {
 
 test "count_sample generator" {
     const test_gen = struct {
-        pub const _zmida_generator_ = true;
+        pub const __zm__generator__ = true;
         begin: u64,
         end: u64,
         step: u64,
