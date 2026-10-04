@@ -1,50 +1,17 @@
-# name mean p0 p10 p25 p50 p75 p90 p100
+# name mean p10 p25 p50 p75 p90
 
 set title "{[title]s}"
 set ylabel "{[units]s}"
 set grid y
 
-set style fill solid 0.5 border
+set style fill solid 0.65 border
 set boxwidth 0.6
 set autoscale xfix
 set offsets 0.5, 0.5, 0, 0
-set xtics rotate by -45 scale 0
+set xtics rotate by -30 scale 0
 
-plot $Data using \
-        0:7:4:8:5:xticlabels(1) \
-        with candlesticks \
-        linecolor rgb "#1d3557" \
-        fill solid 0.4 \
-        title "p25/p75", \
-    $Data using 0:4:(0.12) \
-        with xerrorbars pointtype 0 \
-        linecolor rgb "#1d3557" \
-        title "p10/p90", \
-    $Data using 0:8:(0.12) \
-        with xerrorbars pointtype 0 \
-        linecolor rgb "#1d3557" \
-        notitle, \
-     $Data using \
-        0:6:(0.3) \
-        with xerrorbars \
-        pointtype 0 \
-        linecolor rgb "#1d3557" \
-        title "p50", \
-     $Data using \
-        0:3 \
-        with points \
-        pointtype 11 pointsize 1.0 \
-        linecolor rgb "#457b9d" \
-        title "min", \
-     $Data using \
-        0:9 \
-        with points \
-        pointtype 9 pointsize 1.0 \
-        linecolor rgb "#457b9d" \
-        title "max", \
-     $Data using \
-        0:2 \
-        with points \
-        pointtype 13 pointsize 1.2 \
-        linecolor rgb "#e63946" \
-        title "mean"
+plot $Data using 0:4:3:7:6:xticlabels(1) with candlesticks \
+        linecolor rgb "black" fillcolor "#7788aa" title "p10/25/75/90", \
+    $Data using 0:5:(0.30) with xerrorbars linecolor "black" pointtype 0 title "median", \
+    $Data using 0:2 with points pointtype 2 pointsize 1.3 linecolor rgb "#cc7033" title "mean"
+ 

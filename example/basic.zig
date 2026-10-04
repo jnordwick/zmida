@@ -18,7 +18,7 @@ pub fn main(init: std.process.Init) !void {
         &args,
     );
     defer study.deinit();
-    try study.write_text(null, .{ .mode = .lat });
+    try study.write_text(null, .{ .mode = .thru });
 }
 
 fn lgamma(x: f64) f64 {

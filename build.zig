@@ -43,6 +43,7 @@ pub fn build(b: *std.Build) void {
     // tried to automate this build way too much of a hassle having to basically,
     // use C to write a build script.
     add_example(b, mod, &target, &optimize, "basic");
+    add_example(b, mod, &target, &optimize, "basic2");
     add_example(b, mod, &target, &optimize, "simple");
     add_example(b, mod, &target, &optimize, "gendata");
 

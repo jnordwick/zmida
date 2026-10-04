@@ -442,7 +442,7 @@ pub fn gnuplot(
 ) !void {
     const suite_title = opts.title orelse "zmida";
     const units = "Kops/sec";
-    const pctiles = [_]u32{ 0, 10, 25, 50, 75, 90, 100 };
+    const pctiles = [_]u32{ 10, 25, 50, 75, 90 };
 
     try writer.print("$Data << EOD\n", .{});
     for (trials) |t| {
