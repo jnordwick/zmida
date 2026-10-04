@@ -3,6 +3,9 @@ const std = @import("std");
 const ResolvedTarget = std.Build.ResolvedTarget;
 const OptimizeMode = std.builtin.OptimizeMode;
 
+var ex_build_step: *std.Build.Step = undefined;
+var ex_run_step: *std.Build.Step = undefined;
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -34,7 +37,12 @@ pub fn build(b: *std.Build) void {
     }
 
     // examples
-    //add_example(b, mod, &target, &optimize, "basic");
+    ex_build_step = b.step("examples", "Build all examples");
+    ex_run_step = b.step("run-examples", "Run all examples");
+
+    // tried to automate this build way too much of a hassle having to basically,
+    // use C to write a build script.
+    add_example(b, mod, &target, &optimize, "basic");
     add_example(b, mod, &target, &optimize, "simple");
     add_example(b, mod, &target, &optimize, "gendata");
 
@@ -70,12 +78,23 @@ fn add_example(
             },
         }),
     });
-    b.installArtifact(example);
-    const example_step = b.step("ex-" ++ name, "Run " ++ name ++ " example");
-    const example_cmd = b.addRunArtifact(example);
-    example_step.dependOn(&example_cmd.step);
-    example_cmd.step.dependOn(b.getInstallStep());
+
+    const build_step = b.step(
+        "build-" ++ name,
+        "Build " ++ name ++ " example",
+    );
+    build_step.dependOn(&example.step);
+    ex_build_step.dependOn(build_step);
+
+    const run_step = b.step(
+        "run-" ++ name,
+        "Run " ++ name ++ " example",
+    );
+    const run_cmd = b.addRunArtifact(example);
+    run_step.dependOn(&run_cmd.step);
+    ex_run_step.dependOn(run_step);
+
     if (b.args) |args| {
-        example_cmd.addArgs(args);
+        run_cmd.addArgs(args);
     }
 }
