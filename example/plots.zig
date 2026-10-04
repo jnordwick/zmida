@@ -12,11 +12,12 @@ pub fn main(init: std.process.Init) !void {
     const config: zm.Config = .byadapt(.{});
 
     var vt = vtable{ .vfunc = nothing };
-    var study = try zm.Study.run("gamma", config, funcs, .{ &vt, 0 });
+    var study = try zm.Study.run("virtual calls", config, funcs, .{ &vt, 0 });
     defer study.deinit();
 
     try study.write_text(null, .{ .mode = .lat });
-    try study.write_gnuplot("basic2", .{});
+    try study.write_gnuplot("vcalls", .{});
+    try study.write_gnuplot_perf("vcalls", .{});
 }
 
 const vtable = struct {
