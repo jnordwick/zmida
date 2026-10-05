@@ -22,12 +22,12 @@ pub fn build(b: *std.Build) void {
 
     // tried to automate this build way too much of a hassle having to basically,
     // use C to write a build script.
-    add_example(b, mod, &target, &optimize, "basic");
-    add_example(b, mod, &target, &optimize, "simple");
-    add_example(b, mod, &target, &optimize, "gendata");
-    add_example(b, mod, &target, &optimize, "plots");
-    add_example(b, mod, &target, &optimize, "full");
-    add_example(b, mod, &target, &optimize, "readme");
+    add_example(b, mod, &target, optimize, "readme");
+    add_example(b, mod, &target, optimize, "basic");
+    add_example(b, mod, &target, optimize, "simple");
+    add_example(b, mod, &target, optimize, "gendata");
+    add_example(b, mod, &target, optimize, "plots");
+    add_example(b, mod, &target, optimize, "full");
 
     // build test
     const mod_tests = b.addTest(.{
@@ -42,7 +42,7 @@ fn add_example(
     b: *std.Build,
     mod: *std.Build.Module,
     target: *const ResolvedTarget,
-    optimize: *const OptimizeMode,
+    optimize: OptimizeMode,
     name: anytype,
 ) void {
     const example = b.addExecutable(.{
@@ -50,7 +50,7 @@ fn add_example(
         .root_module = b.createModule(.{
             .root_source_file = b.path("example/" ++ name ++ ".zig"),
             .target = target.*,
-            .optimize = optimize.*,
+            .optimize = optimize,
             .imports = &.{
                 .{ .name = "zmida", .module = mod },
             },

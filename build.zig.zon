@@ -1,6 +1,6 @@
 .{
     .name = .zmida,
-    .version = "0.0.1",
+    .version = "0.1.0",
     .fingerprint = 0xc02e2f6f26eec07d,
     .minimum_zig_version = "0.16.0",
     .paths = .{
