@@ -419,7 +419,7 @@ pub fn csv_samples(
     trials: []const root.TrialStats,
     opts: root.SamplesOpts,
 ) !void {
-    try writer.print("fn{[sep]c}calls{[sep]c}time\n", .{ .sep = opts.separator });
+    try writer.print("fn{[sep]c}calls{[sep]c}nanos\n", .{ .sep = opts.separator });
     for (trials) |t| {
         for (t.trial.data.items) |s| {
             try writer.print("{[name]s}{[sep]c}{[calls]d}{[sep]c}{[nanos]d}\n", .{

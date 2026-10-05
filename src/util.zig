@@ -68,7 +68,7 @@ pub fn parse_opts(pinit: *const std.process.Init, env_opts: root.EnvOpts) root.E
                 v = std.fmt.parseInt(u32, val, 10) catch
                     errexit("verbose level 0-2: {s}", val);
             } else {
-                v = 1;
+                v = 2;
             }
             verbose(2, "found verbose option {}\n", .{v});
             opts.verbose = v;
@@ -105,25 +105,8 @@ pub fn parse_opts(pinit: *const std.process.Init, env_opts: root.EnvOpts) root.E
 }
 
 pub fn errexit(comptime format: []const u8, args: anytype) noreturn {
-    verbose(0, format ++ "\n", args);
+    verbose(0, "!!! ERROR !!! " ++ format ++ "\n", args);
     std.process.exit(1);
-}
-
-pub fn panic(comptime format: []const u8, args: anytype) noreturn {
-    var buffer: [512]u8 = undefined;
-    const str = std.fmt.bufPrint(&buffer, format, args) catch {
-        @panic("Could not create panic message");
-    };
-    @panic(str);
-}
-
-pub fn iround(x: f64) i64 {
-    return @intFromFloat(@round(x));
-}
-
-pub inline fn to_slice(T: type, S: type, x: *S) []T {
-    const len = @sizeOf(S) / @sizeOf(T);
-    return @as([*]T, @ptrCast(x))[0..len];
 }
 
 pub inline fn is_tuple(T: type) bool {
@@ -297,15 +280,6 @@ pub fn check_cpu_files(x: u32) void {
     }
 }
 
-fn read_file(io: std.Io, path: []const u8, dest: []u8) ![]u8 {
-    const file = try std.Io.Dir.openFileAbsolute(io, path, .{});
-    defer file.close(io);
-
-    const bytes_read = try file.readPositionalAll(io, dest, 0);
-    const ret = std.mem.trim(u8, dest[0..bytes_read], " \t\n");
-    return @constCast(ret);
-}
-
 test "alrefs" {
     _ = std.testing.refAllDecls(@This());
 }
@@ -341,13 +315,6 @@ test split {
     r = split("", '=');
     try testing.expectEqualStrings("", r[0]);
     try testing.expectEqualStrings("", r[1]);
-}
-
-test read_file {
-    const fname = "/sys/devices/system/cpu/cpu0/cpufreq/affected_cpus";
-    var buf: [32]u8 = @splat(0);
-    const t = try read_file(std.testing.io, fname, &buf);
-    try std.testing.expectEqualStrings("0", t);
 }
 
 test check_cpu_files {

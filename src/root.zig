@@ -19,10 +19,26 @@ pub const TrialStats = stats.TrialStats;
 const debug_warn = util.debug_warn;
 const verbose = util.verbose;
 const errexit = util.errexit;
+const argslen = util.argslen;
+const argstype_of = util.argstype_of;
+const is_tuple = util.is_tuple;
+const get_fname = util.get_fname;
+const get_file = util.get_file;
+const idiv_up = util.idiv_up;
+const parse_opts = util.parse_opts;
+const check_cpu_files = util.check_cpu_files;
+
+// last TODO:
+// --help
+// remove main.zig
+// regen pngs
 
 /// The environment for the runners. Don't touch this. Use EnvOpts instead.
 pub const Env = struct {
+    const builtin = @import("builtin");
     pub const callmod: std.builtin.CallModifier = b: {
+        if (builtin.os.tag != .linux or builtin.cpu.arch != .x86_64)
+            @compileError("Currently only supports Linux x64.");
         const that = @import("root");
         const ne = @hasDecl(that, "__zm__callmod__");
         break :b if (ne) that.__zm__callmod__ else .auto;
@@ -126,7 +142,7 @@ pub const Config = union(enum) {
 pub const TextOpts = struct {
     /// display mode, by latency or throughput
     mode: enum { lat, thru } = .lat,
-    /// use ascii, false allows use of box and color
+    /// use ascii, false allows use of UNICOE and ANSI codes
     ascii: bool = true,
     /// print info header before tables
     with_header: bool = true,
@@ -136,7 +152,7 @@ pub const TextOpts = struct {
 
 /// print timing summary in structured format, numbers are per call (latency)
 pub const SummaryOpts = struct {
-    /// file format, currently only csv-like supporter (json coming)
+    /// file format, currently only csv-like supporter
     format: enum { csv } = .csv,
     /// separator (only used for csv)
     separator: u8 = ',',
@@ -150,7 +166,7 @@ pub const SummaryOpts = struct {
 
 /// print all unaggregared sample data
 pub const SamplesOpts = struct {
-    /// file format, currently only csv-like supporter (json coming)
+    /// file format, currently only csv-like supporter
     format: enum { csv } = .csv,
     /// separator (only used for csv)
     separator: u8 = ',',
@@ -180,7 +196,7 @@ pub fn bench(pinit: *const std.process.Init, funcs: anytype, args: anytype) !voi
 /// prints text tables to stdout
 pub fn bench_ex(pinit: *const std.process.Init, env_opts: EnvOpts, config: Config, funcs: anytype, args: anytype) !void {
     if (!Env.already_init) init(pinit, env_opts);
-    const ftuple = if (util.is_tuple(@TypeOf(funcs))) funcs else .{funcs};
+    const ftuple = if (is_tuple(@TypeOf(funcs))) funcs else .{funcs};
     var study = try Study.run(null, config, ftuple, args);
     defer study.deinit();
     try study.write_text(null, .{ .mode = .lat });
@@ -199,20 +215,32 @@ pub const Study = struct {
     stats: ArrayList(TrialStats),
 
     /// clean up memory and any open handles
-    pub fn deinit(this: @This()) void {
+    pub fn deinit(this: *@This()) void {
+        this.clear_stats();
+        this.stats.deinit();
+        this.trials.deinit();
+    }
+
+    fn clear_stats(this: *@This()) void {
         for (this.trials.items) |*t| {
             t.deinit();
         }
-        this.trials.deinit();
-        this.stats.deinit();
+        this.stats.clearRetainingCapacity();
     }
 
     /// create and run a study
     /// name: used for output, null uses a default name
     /// config: a trial configuration
-    /// funcs:
+    /// funcs: the function or tuple of functions to bench
+    /// args: any of appropriate argument types. See readme or documentation for full details
     pub fn run(name: ?[]const u8, config: Config, funcs: anytype, args: anytype) !Study {
-        const functuple = if (util.is_tuple(@TypeOf(funcs))) funcs else .{funcs};
+        switch (argstype_of(@TypeOf(args))) {
+            .slice_tuple, .slice_naked, .ptrarray_tuple, .ptrarray_naked => {
+                if (argslen(args) == 0) errexit("no arguments, use {{}} for niladic function.", .{});
+            },
+            else => {},
+        }
+        const functuple = if (is_tuple(@TypeOf(funcs))) funcs else .{funcs};
         Env.check_init();
         var this = Study{
             .name = name orelse "zmida",
@@ -231,6 +259,9 @@ pub const Study = struct {
                 verbose(1, "\t- perf calls: {d}\n", .{c.perf_calls});
             },
             .timed => |c| {
+                if (std.Thread.use_pthreads) {
+                    verbose(0, "!!! WARNING !!! pthreads and Timed Config conflic.", .{});
+                }
                 verbose(1, "Timed:\n", .{});
                 verbose(1, "\t- warmup millis: {d}\n", .{c.warmup_millis});
                 verbose(1, "\t- trial samples: {d}\n", .{c.trial_samples});
@@ -245,9 +276,10 @@ pub const Study = struct {
                 verbose(1, "\t- perf millis: {d}\n", .{c.perf_millis});
             },
         }
+        this.clear_stats();
         inline for (0..functuple.len) |i| {
             verbose(1, "Running trial {d}/{d}\n", .{ i + 1, functuple.len });
-            var t = Trial.init(this.def, util.get_fname(funcs[i]));
+            var t = Trial.init(this.def, get_fname(funcs[i]));
             try t.run(functuple[i], args);
             try this.trials.append(t);
         }
@@ -255,14 +287,14 @@ pub const Study = struct {
     }
 
     fn make_def(config: Config, args: anytype) TrialDef {
-        const nargs = util.argslen(args);
+        const nargs = argslen(args);
         switch (config) {
             .count => |c| {
                 return .{ .count = .{
-                    .warmup_sweeps = util.idiv_up(u64, c.warmup_calls, nargs),
+                    .warmup_sweeps = idiv_up(u64, c.warmup_calls, nargs),
                     .trial_samples = c.trial_samples,
-                    .sample_sweeps = util.idiv_up(u64, c.sample_calls, nargs),
-                    .perf_sweeps = util.idiv_up(u64, c.perf_calls, nargs),
+                    .sample_sweeps = idiv_up(u64, c.sample_calls, nargs),
+                    .perf_sweeps = idiv_up(u64, c.perf_calls, nargs),
                 } };
             },
             .timed => |c| {
@@ -270,8 +302,8 @@ pub const Study = struct {
                 return .{ .timed = .{
                     .warmup_nanos = @as(u64, c.warmup_millis) * 1_000_000,
                     .trial_samples = c.trial_samples,
-                    .sample_nanos = util.idiv_up(u64, @as(u64, millis) * 1_000_000, c.trial_samples),
-                    .perf_nanos = c.perf_millis * 1_000_000,
+                    .sample_nanos = idiv_up(u64, @as(u64, millis) * 1_000_000, c.trial_samples),
+                    .perf_nanos = @as(u64, c.perf_millis) * 1_000_000,
                 } };
             },
             .adapt => |c| {
@@ -279,8 +311,8 @@ pub const Study = struct {
                 return .{ .adapt = .{
                     .warmup_nanos = @as(u64, c.warmup_millis) * 1_000_000,
                     .trial_samples = c.trial_samples,
-                    .sample_nanos = util.idiv_up(u64, @as(u64, millis) * 1_000_000, c.trial_samples),
-                    .perf_nanos = c.perf_millis * 1_000_000,
+                    .sample_nanos = idiv_up(u64, @as(u64, millis) * 1_000_000, c.trial_samples),
+                    .perf_nanos = @as(u64, c.perf_millis) * 1_000_000,
                     .est_sample_sweeps = 0,
                     .est_perf_sweeps = 0,
                 } };
@@ -304,7 +336,7 @@ pub const Study = struct {
     pub fn write_text(this: *@This(), fname: ?[]const u8, topts: TextOpts) !void {
         const opts = topts;
         try this.statistics();
-        const file = try util.get_file(fname, ".txt");
+        const file = try get_file(fname, ".txt");
         defer if (fname != null) file.close(Env.io);
         var writer = file.writer(Env.io, &.{});
         const iface = &writer.interface;
@@ -331,7 +363,7 @@ pub const Study = struct {
     pub fn write_summary(this: *@This(), fname: ?[]const u8, sopts: SummaryOpts) !void {
         const opts = sopts;
         try this.statistics();
-        const file = try util.get_file(fname, "-summary.csv");
+        const file = try get_file(fname, "-summary.csv");
         defer if (fname != null) file.close(Env.io);
         var writer = file.writer(Env.io, &.{});
         try out.csv_summary(&writer.interface, this.stats.items, opts);
@@ -343,7 +375,7 @@ pub const Study = struct {
     pub fn write_samples(this: *@This(), fname: ?[]const u8, sopts: SamplesOpts) !void {
         const opts = sopts;
         try this.statistics();
-        const file = try util.get_file(fname, "-samples.csv");
+        const file = try get_file(fname, "-samples.csv");
         defer if (fname != null) file.close(Env.io);
         var writer = file.writer(Env.io, &.{});
         try out.csv_samples(&writer.interface, this.stats.items, opts);
@@ -354,7 +386,7 @@ pub const Study = struct {
     /// opts: output options
     pub fn write_gnuplot(this: *@This(), fname: ?[]const u8, opts: GnuplotOpts) !void {
         try this.statistics();
-        const file = try util.get_file(fname, ".gp");
+        const file = try get_file(fname, ".gp");
         defer if (fname != null) file.close(Env.io);
         var writer = file.writer(Env.io, &.{});
         try out.gnuplot(&writer.interface, this.stats.items, opts);
@@ -366,7 +398,7 @@ pub const Study = struct {
     /// opts: output options
     pub fn write_gnuplot_perf(this: *@This(), fname: ?[]const u8, opts: GnuplotOpts) !void {
         try this.statistics();
-        const file = try util.get_file(fname, "-perf.gp");
+        const file = try get_file(fname, "-perf.gp");
         defer if (fname != null) file.close(Env.io);
         var writer = file.writer(Env.io, &.{});
         try out.gnuplot_perf(&writer.interface, this.stats.items, opts);
@@ -398,11 +430,10 @@ pub const PerfSample = struct {
 /// env_opts: override options. command line switches take precendece.
 pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
     if (Env.already_init) errexit("Can only call zminda.init once", .{});
-    Env.already_init = true;
     Env.io = pinit.io;
     Env.alloc = pinit.gpa;
 
-    const opts = util.parse_opts(pinit, env_opts);
+    const opts = parse_opts(pinit, env_opts);
     debug_warn();
 
     if (Env.callmod != .auto) {
@@ -427,7 +458,7 @@ pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
             errexit("could not set cpu affinity to {}: {}\n", .{ cpu, e });
         };
         verbose(1, "set cpu affinity to {}\n", .{cpu});
-        util.check_cpu_files(cpu);
+        check_cpu_files(cpu);
     }
     Env.set_prio = opts.set_prio;
     if (Env.set_prio) |prio| {

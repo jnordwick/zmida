@@ -13,12 +13,6 @@ const float_div = util.float_div;
 const to_float = util.to_float;
 const verbose = util.verbose;
 
-// Definitions are the actual parameters for a trial.
-// these are concrete and what are the repeatable pieces.
-// I plan to move some other pieces into these such as
-// perf and timing options so trials can be indepedant
-// of the studies. this should clean up the interace
-// a little.
 pub const CountDef = struct {
     warmup_sweeps: u64,
     trial_samples: u64,
@@ -253,6 +247,7 @@ pub const Trial = struct {
                 .{ this.name, this.def.timed.perf_nanos },
             );
             var panel = try util.make_cpu_panel(Env.alloc);
+            defer panel.deinit();
             const res = try runners.timed_sample(
                 argstype,
                 &panel,
@@ -262,7 +257,6 @@ pub const Trial = struct {
             );
             this.perf.cpu_calls = res.calls;
             try panel.read(0, this.perf.cpu.as_payload());
-            panel.deinit();
         }
 
         if (Env.perf_mem) {
@@ -272,6 +266,7 @@ pub const Trial = struct {
                 .{ this.name, this.def.timed.perf_nanos },
             );
             var panel = try util.make_mem_panel(Env.alloc);
+            defer panel.deinit();
             const res = try runners.timed_sample(
                 argstype,
                 &panel,
@@ -282,7 +277,6 @@ pub const Trial = struct {
             this.perf.mem_calls = res.calls;
             try panel.read(0, this.perf.memr.as_payload());
             try panel.read(1, this.perf.memw.as_payload());
-            panel.deinit();
         }
     }
 

@@ -5,6 +5,7 @@ const OptimizeMode = std.builtin.OptimizeMode;
 
 var ex_build_step: *std.Build.Step = undefined;
 var ex_run_step: *std.Build.Step = undefined;
+var ex_last_step: ?*std.Build.Step = null;
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -93,7 +94,12 @@ fn add_example(
     );
     const run_cmd = b.addRunArtifact(example);
     run_step.dependOn(&run_cmd.step);
-    ex_run_step.dependOn(run_step);
+    if (ex_last_step) |s| {
+        s.dependOn(run_step);
+    } else {
+        ex_run_step.dependOn(run_step);
+    }
+    ex_last_step = run_step;
 
     if (b.args) |args| {
         run_cmd.addArgs(args);

@@ -1,4 +1,4 @@
-.PHONY: clean retest
+.PHONY: clean retest build test
 
 build:
 	zig build --verbose
@@ -9,5 +9,5 @@ test:
 retest: clean test
 
 clean:
-	rm -rf zig-out .zig-cache *.a *.a.o
+	rm -rf zig-out .zig-cache *.gp examples/*.gp examples/*.png
 

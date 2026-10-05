@@ -1,4 +1,5 @@
 const std = @import("std");
+const util = @import("util.zig");
 
 /// generate n random numbers in interval [from, to], using supplied random seed.
 pub fn uniform(comptime T: type, comptime n: u64, from: T, to: T, seed: u64) [n]T {
@@ -9,7 +10,7 @@ pub fn uniform(comptime T: type, comptime n: u64, from: T, to: T, seed: u64) [n]
         a.* = switch (@typeInfo(T)) {
             .float => from + (to - from) * rr.float(T),
             .int => rr.intRangeAtMost(T, from, to),
-            else => @compileError("make_array: unsupported type " ++ @typeName(T)),
+            else => @compileError("uniform: unsupported type " ++ @typeName(T)),
         };
     }
     return arr;
@@ -78,6 +79,8 @@ pub fn LinSpace(T: type) type {
         step: T,
 
         pub fn init(begin: T, end: T, npoints: u64) @This() {
+            if (npoints < 2)
+                util.errexit("LinSpace npoints must be >= 2, was {d}", npoints);
             const step = (end - begin) / @as(T, @floatFromInt(npoints - 1));
 
             return .{

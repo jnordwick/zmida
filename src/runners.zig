@@ -133,11 +133,13 @@ pub noinline fn timed_sample(
         done.store(true, .release);
         timer_thread.join();
     }
-    const tid: sys.id_t = @intCast(timer_thread.getHandle());
-    if (Env.orig_cpu_set) |cs| {
-        try sys.sched_setaffinity(tid, &cs);
+    if (!std.Thread.use_pthreads) {
+        const tid: sys.id_t = @intCast(timer_thread.getHandle());
+        if (Env.orig_cpu_set) |cs| {
+            try sys.sched_setaffinity(tid, &cs);
+        }
+        try sys.setpriority(.PROCESS, tid, 19);
     }
-    try sys.setpriority(.PROCESS, tid, 19);
     var timer: Timer = undefined;
     if (panel) |p| {
         try p.open();

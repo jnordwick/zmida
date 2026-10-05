@@ -63,7 +63,7 @@ fn dcall(v: *vtable, x: u64) u64 {
 }
 
 fn dcall_dno(v: *vtable, x: u64) u64 {
-    dno(vtable);
+    dno(v);
     v.data = x;
     return v.dfunc();
 }

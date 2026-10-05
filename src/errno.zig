@@ -282,8 +282,7 @@ pub const errno = error{
     _errno_unknown,
 };
 
-// inline to ensure fast success
-pub inline fn chkerr(rc: usize) errno!usize {
+pub fn chkerr(rc: usize) errno!usize {
     if (rc >= to_usize(-4095)) {
         @branchHint(.unlikely);
         const err_val: u16 = @intCast(-@as(isize, @bitCast(rc)));

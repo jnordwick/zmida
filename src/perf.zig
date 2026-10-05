@@ -9,6 +9,7 @@ const perf_event_attr = sys.perf_event_attr;
 
 pub const max_events = 8;
 
+// matches the perf_event struct and payload
 pub const CpuCounters = extern struct {
     pub const events = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
     nrecords: u64 = 0,
@@ -25,6 +26,7 @@ pub const CpuCounters = extern struct {
     }
 };
 
+// matches the perf_event struct and payload
 pub const MemReadCounters = extern struct {
     pub const events = [_]Event{ .l1d_read, .l1d_read_miss, .ll_read, .ll_read_miss };
     nrecords: u64 = 0,
@@ -40,6 +42,7 @@ pub const MemReadCounters = extern struct {
     }
 };
 
+// matches the perf_event struct and payload
 pub const MemWriteCounters = extern struct {
     pub const events = [_]Event{ .l1d_write, .ll_write, .ll_write_miss };
     nrecords: u64 = 0,
@@ -124,7 +127,7 @@ pub const Sample = extern struct {
 
 pub const PerfProbe = struct {
     nevents: u64 = 0,
-    fds: [max_events]fd_t = @splat(0),
+    fds: [max_events]fd_t = @splat(-1),
     events: [max_events]Event = undefined,
     pinned: bool = false,
 
@@ -135,7 +138,7 @@ pub const PerfProbe = struct {
     }
 
     pub fn open(this: *@This()) !void {
-        std.debug.assert(this.fds[0] == 0);
+        std.debug.assert(this.fds[0] == -1);
         if (this.nevents == 0) return;
         errdefer this.close();
 
@@ -179,9 +182,9 @@ pub const PerfProbe = struct {
     pub fn close(this: *@This()) void {
         this.disable() catch {};
         for (0..this.nevents) |i| {
-            if (this.fds[i] != 0) {
+            if (this.fds[i] != -1) {
                 sys.close(this.fds[i]) catch {};
-                this.fds[i] = 0;
+                this.fds[i] = -1;
             }
         }
     }
@@ -191,17 +194,17 @@ pub const PerfProbe = struct {
     }
 
     pub fn enable(this: *const @This()) !void {
-        if (this.fds[0] == 0) return;
+        if (this.fds[0] == -1) return;
         _ = try sys.ioctl(this.fds[0], PERF.EVENT_IOC.ENABLE, sys.PERF_IOC_FLAG_GROUP);
     }
 
     pub fn disable(this: *const @This()) !void {
-        if (this.fds[0] == 0) return;
+        if (this.fds[0] == -1) return;
         _ = try sys.ioctl(this.fds[0], PERF.EVENT_IOC.DISABLE, sys.PERF_IOC_FLAG_GROUP);
     }
 
     pub fn reset(this: *const @This()) !void {
-        if (this.fds[0] == 0) return;
+        if (this.fds[0] == -1) return;
         _ = try sys.ioctl(this.fds[0], PERF.EVENT_IOC.RESET, sys.PERF_IOC_FLAG_GROUP);
     }
 
@@ -274,32 +277,33 @@ fn workload(reps: u64) void {
     }
 }
 
-// test {
-//     const events0 = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
-//     const events1 = [_]Event{ .l1d_read, .l1d_read_miss, .ll_read, .ll_read_miss };
-//     const events2 = [_]Event{ .l1d_write, .ll_write, .ll_write_miss };
+test {
+    if (true) return error.SkipZigTest;
+    const events0 = [_]Event{ .retired_instr, .cpu_cycles, .branch_miss, .branch_total, .l1i_read_miss };
+    const events1 = [_]Event{ .l1d_read, .l1d_read_miss, .ll_read, .ll_read_miss };
+    const events2 = [_]Event{ .l1d_write, .ll_write, .ll_write_miss };
 
-//     var ps: PerfPanel = .init(std.testing.allocator, false);
-//     try ps.add(&events0);
-//     try ps.add(&events1);
-//     try ps.add(&events2);
+    var ps: PerfPanel = .init(std.testing.allocator, false);
+    try ps.add(&events0);
+    try ps.add(&events1);
+    try ps.add(&events2);
 
-//     try ps.open();
-//     try ps.enable();
-//     workload(1_000_000);
-//     try ps.disable();
+    try ps.open();
+    try ps.enable();
+    workload(1_000_000);
+    try ps.disable();
 
-//     var samp: Sample = .{};
-//     try ps.read(0, samp.buffer(ps.nevents(0)));
-//     std.debug.print("{any}\n", .{samp});
+    var samp: Sample = .{};
+    try ps.read(0, samp.buffer(ps.nevents(0)));
+    std.debug.print("{any}\n", .{samp});
 
-//     samp.clear();
-//     try ps.read(1, samp.buffer(ps.nevents(1)));
-//     std.debug.print("{any}\n", .{samp});
+    samp.clear();
+    try ps.read(1, samp.buffer(ps.nevents(1)));
+    std.debug.print("{any}\n", .{samp});
 
-//     samp.clear();
-//     try ps.read(2, samp.buffer(ps.nevents(2)));
-//     std.debug.print("{any}\n", .{samp});
+    samp.clear();
+    try ps.read(2, samp.buffer(ps.nevents(2)));
+    std.debug.print("{any}\n", .{samp});
 
-//     ps.deinit();
-// }
+    ps.deinit();
+}

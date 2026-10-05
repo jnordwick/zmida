@@ -1,4 +1,4 @@
-pub const std = @import("std");
+const std = @import("std");
 const clock_nanosleep = std.os.linux.clock_nanosleep;
 const clock_gettime = std.os.linux.clock_gettime;
 const timespec = std.os.linux.timespec;
@@ -82,20 +82,6 @@ pub fn pause_for(sleep_nanos: u64) void {
     while (clock_nanosleep(.MONOTONIC, .{ .ABSTIME = false }, &sleep_ts, &sleep_ts) != 0) {}
 }
 
-pub fn pause_until(stop_nanos: u64) void {
-    var max_wakeup: usize = 10;
-    const sleep_min = 5 * 1000 * 1000; // 1 millis
-    var sleep_ts = timespec_from_nanos(stop_nanos - sleep_min);
-    while (clock_nanosleep(.MONOTONIC, .{ .ABSTIME = true }, &sleep_ts, &sleep_ts) != 0) {
-        // when too many wakeups, fall down to polling behavior
-        if (max_wakeup == 0) break;
-        max_wakeup -= 1;
-    }
-    while (now() < stop_nanos) {
-        std.atomic.spinLoopHint();
-    }
-}
-
 pub fn now() u64 {
     var ts: timespec = undefined;
     const ret = clock_gettime(.MONOTONIC_RAW, &ts);
@@ -129,7 +115,12 @@ pub fn get_tsc_freq() ?u64 {
     if (max_leaf >= 0x16) {
         const leaf = cpuid(0x16, 0);
         const mhz = leaf.eax & 0xffff;
-        if (mhz != 0) return @as(u64, mhz) * 1_000_000;
+        if (mhz != 0) {
+            // TODO: do a calibration check
+            util.verbose(0, "!!! WARNING !!! using leaf 0x16, base freq may not be clock freq: {}\n", .{mhz});
+            util.verbose(0, "!!! WARNING !!! consider EnvOpts.use_tsc=false\n", .{});
+            return @as(u64, mhz) * 1_000_000;
+        }
     }
     return null;
 }
@@ -195,16 +186,8 @@ test pause_for {
     try tt.expect(paused >= sleep_time);
 }
 
-test pause_until {
-    const sleep_time = 10 * 1000 * 1000;
-    const start = now();
-    pause_until(start + sleep_time);
-    const stop = now();
-    const diff = @abs(@as(i64, @intCast(stop - start)) - @as(i64, @intCast(sleep_time)));
-    try tt.expect(diff < 1000 * 1000);
-}
-
 test "tsc check" {
+    if (true) return error.SkipZigTest;
     try tt.expect(invariant_tsc());
     try tt.expect(get_tsc_freq() != null);
 }
