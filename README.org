@@ -1,5 +1,13 @@
 * zmida -- zig benchmarking harness
 
+If you are seeing this as plain text,  it is related to an Oct 2nd GiHub bug:
+https://github.com/github/markup/issues/2105
+https://github.com/github/markup/pull/2106
+
+Hopefully it is fixed soon
+
+--
+
 This is for benchmarking high performance, cpu bound code.
 
 - arbitrary argument functions (zero, one, or many arguments)
