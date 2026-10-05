@@ -46,7 +46,7 @@ pub const Env = struct {
     pub var alloc: Allocator = undefined;
     pub var io: Io = undefined;
     pub var debug_warn: bool = true;
-    pub var verbose: u32 = 1;
+    pub var verbose: i32 = 1;
     pub var use_tsc: bool = true;
     pub var pin_cpu: ?u32 = null;
     pub var set_prio: ?i32 = null;
@@ -63,7 +63,7 @@ pub const Env = struct {
 /// Global options for all runners
 pub const EnvOpts = struct {
     /// verbose level. 0 is silent, 1 is normal, 2 is trace
-    verbose: u32 = 1,
+    verbose: i32 = 1,
     /// use RDTSC if available
     use_tsc: bool = true,
     /// pin to a cpu
@@ -260,7 +260,7 @@ pub const Study = struct {
             },
             .timed => |c| {
                 if (std.Thread.use_pthreads) {
-                    verbose(0, "!!! WARNING !!! pthreads and Timed Config conflic.", .{});
+                    verbose(0, "--- warning --- pthreads and Timed Config conflic.", .{});
                 }
                 verbose(1, "Timed:\n", .{});
                 verbose(1, "\t- warmup millis: {d}\n", .{c.warmup_millis});
@@ -443,7 +443,7 @@ pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
     Env.verbose = opts.verbose;
     Env.use_tsc = opts.use_tsc;
     time.Clock.setup(if (Env.use_tsc) .tsc else .monotonic) catch {
-        verbose(0, "!!! WARNING !!! No capable TSC. using monotonic.\n", .{});
+        verbose(0, "--- warning --- No capable TSC. using monotonic.\n", .{});
     };
     Env.pin_cpu = opts.pin_cpu;
     if (Env.pin_cpu) |cpu| {

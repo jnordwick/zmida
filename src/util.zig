@@ -8,11 +8,11 @@ const perf = @import("perf.zig");
 const ArgsType = @import("trial.zig").ArgsType;
 const Env = root.Env;
 
-pub fn verbose(lev: u32, comptime fmt: []const u8, args: anytype) void {
+pub fn verbose(lev: i32, comptime fmt: []const u8, args: anytype) void {
+    const of = if (lev < 0) std.Io.File.stdout() else std.Io.File.stderr();
     if (lev <= Env.verbose) {
         var buffer: [512]u8 = undefined;
-        const stderr = std.Io.File.stderr();
-        var writer = stderr.writer(Env.io, &buffer);
+        var writer = of.writer(Env.io, &buffer);
         writer.interface.print(fmt, if (is_tuple(@TypeOf(args))) args else .{args}) catch |e| {
             errexit("print failed: {}", e);
         };
@@ -25,7 +25,7 @@ pub fn verbose(lev: u32, comptime fmt: []const u8, args: anytype) void {
 pub fn debug_warn() void {
     // Test the ORIGINAL io, not Env.io.
     if (@import("builtin").mode == .Debug and Env.debug_warn) {
-        verbose(0, "!!! WARNING !!! Compiled in debug mode.\n", .{});
+        verbose(0, "--- warning --- Compiled in debug mode.\n", .{});
         Env.debug_warn = false;
     }
 }
@@ -54,6 +54,21 @@ pub fn split(str: [:0]const u8, sep: u8) struct { []const u8, []const u8 } {
     return .{ slice[0..pos], slice[pos + 1 ..] };
 }
 
+fn print_usage(lev: i32) noreturn {
+    const msg =
+        \\ usage:
+        \\   -c=<n> | --cpu=<n>     pin to cpu: any core number
+        \\   -h     | --help        this message
+        \\   -n=<n> | --nice=<n>    set process niceness: -20 to 19 (<0 requies root)
+        \\   -p=<s> | --perf=<s>    perf_event counters: cpu (default), mem, both
+        \\   -t[=b] | --tsc[=b]     attempt RDTSC timer: yes/true (default), no/false
+        \\   -v[=n] | --verbose[=n] verbose level: 0 (silent) to 2 (default)
+        \\
+    ;
+    verbose(lev, msg, .{});
+    std.process.exit(if (lev < 0) 0 else 1);
+}
+
 pub fn parse_opts(pinit: *const std.process.Init, env_opts: root.EnvOpts) root.EnvOpts {
     var opts = env_opts;
     var iter = pinit.minimal.args.iterate();
@@ -63,14 +78,14 @@ pub fn parse_opts(pinit: *const std.process.Init, env_opts: root.EnvOpts) root.E
         if (str[0] != '-') continue;
         const name, const val = split(str, '=');
         if (str_in(name, .{ "-v", "--verbose" })) {
-            var v: u32 = 0;
+            var v: i32 = 0;
             if (val.len > 0) {
-                v = std.fmt.parseInt(u32, val, 10) catch
+                v = std.fmt.parseInt(i32, val, 10) catch
                     errexit("verbose level 0-2: {s}", val);
             } else {
                 v = 2;
             }
-            verbose(2, "found verbose option {}\n", .{v});
+            verbose(2, "found verbose option {}\n", v);
             opts.verbose = v;
             // directly set for verbose to get trace output from option parsing
             Env.verbose = v;
@@ -97,8 +112,11 @@ pub fn parse_opts(pinit: *const std.process.Init, env_opts: root.EnvOpts) root.E
             } else {
                 errexit("unknown perf arguent (cpu, mem, both): {s}", val);
             }
+        } else if (str_in(name, .{ "-h", "--help" })) {
+            print_usage(-1);
         } else {
-            errexit("unknown option name: {s}", name);
+            verbose(0, "unknown option name: {s}", name);
+            print_usage(0);
         }
     }
     return opts;
@@ -269,13 +287,13 @@ pub fn check_cpu_files(x: u32) void {
 
     if (gov) |g| {
         if (!epp_driven and !std.mem.eql(u8, g, "performance")) {
-            verbose(0, "!!! WARNING !!! cpu {d}: scaling governor is {s}, results might be affected\n", .{ x, g });
+            verbose(0, "--- warning --- cpu {d}: scaling governor is {s}, results might be affected\n", .{ x, g });
         }
     }
     if (epp) |e| {
         // power / balance_power are bad; balance_performance and default are fine
         if (std.mem.indexOf(u8, e, "power") != null) {
-            verbose(0, "!!! WARNING !!! cpu {d}: energy performance pref is {s}, results might be affected\n", .{ x, e });
+            verbose(0, "--- warning --- cpu {d}: energy performance pref is {s}, results might be affected\n", .{ x, e });
         }
     }
 }
