@@ -29,8 +29,6 @@ const parse_opts = util.parse_opts;
 const check_cpu_files = util.check_cpu_files;
 
 // last TODO:
-// --help
-// remove main.zig
 // regen pngs
 
 /// The environment for the runners. Don't touch this. Use EnvOpts instead.
@@ -457,7 +455,7 @@ pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
         sys.sched_setaffinity(0, &cpu_set) catch |e| {
             errexit("could not set cpu affinity to {}: {}\n", .{ cpu, e });
         };
-        verbose(1, "set cpu affinity to {}\n", .{cpu});
+        verbose(1, "set cpu affinity to {}\n", cpu);
         check_cpu_files(cpu);
     }
     Env.set_prio = opts.set_prio;
@@ -465,7 +463,7 @@ pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
         sys.setpriority(sys.PRIO.PROCESS, 0, prio) catch |e| {
             errexit("could not set priority (must be root for < 0) to {}: {}", .{ prio, e });
         };
-        verbose(1, "set priority to {}\n", .{prio});
+        verbose(1, "set priority to {}\n", prio);
     }
     Env.perf_cpu = opts.perf_cpu;
     Env.perf_mem = opts.perf_mem;

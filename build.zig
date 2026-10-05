@@ -16,27 +16,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
-    // main.zig
-    const exe = b.addExecutable(.{
-        .name = "zmida",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "zmida", .module = mod },
-            },
-        }),
-    });
-    b.installArtifact(exe);
-    const run_step = b.step("run", "Run the app");
-    const run_cmd = b.addRunArtifact(exe);
-    run_step.dependOn(&run_cmd.step);
-    run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
-
     // examples
     ex_build_step = b.step("examples", "Build all examples");
     ex_run_step = b.step("run-examples", "Run all examples");
@@ -47,19 +26,16 @@ pub fn build(b: *std.Build) void {
     add_example(b, mod, &target, &optimize, "simple");
     add_example(b, mod, &target, &optimize, "gendata");
     add_example(b, mod, &target, &optimize, "plots");
+    add_example(b, mod, &target, &optimize, "full");
+    add_example(b, mod, &target, &optimize, "readme");
 
     // build test
     const mod_tests = b.addTest(.{
         .root_module = mod,
     });
     const run_mod_tests = b.addRunArtifact(mod_tests);
-    const exe_tests = b.addTest(.{
-        .root_module = exe.root_module,
-    });
-    const run_exe_tests = b.addRunArtifact(exe_tests);
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
-    test_step.dependOn(&run_exe_tests.step);
 }
 
 fn add_example(
