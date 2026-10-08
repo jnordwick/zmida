@@ -1,5 +1,5 @@
 const std = @import("std");
-const dno = std.mem.doNotOptimizeAway;
+const dno = util.dno;
 const tt = std.testing;
 
 const root = @import("root.zig");
@@ -20,7 +20,6 @@ const Timer = time.Timer;
 const AtomicBool = std.atomic.Value(bool);
 
 inline fn call(func: anytype, arg: anytype) void {
-    dno(&arg);
     dno(@call(Env.callmod, func, arg));
 }
 
@@ -67,8 +66,11 @@ pub noinline fn count_sample(
     panel: ?*PerfPanel,
     sweeps: u64,
     func: anytype,
-    args: anytype,
+    constargs: anytype,
 ) !Sample {
+    // defeat any constant propagation.
+    var args = constargs;
+    dno(&args);
     var sample: Sample = .{};
     var timer: Timer = undefined;
     if (panel) |p| {
@@ -116,8 +118,11 @@ pub noinline fn timed_sample(
     panel: ?*PerfPanel,
     nanos: u64,
     func: anytype,
-    args: anytype,
+    constargs: anytype,
 ) !Sample {
+    // defeat constant propagation
+    var args = constargs;
+    dno(&args);
     var sample: Sample = .{};
     var start: AtomicBool = .init(false);
     var done: AtomicBool = .init(false);
@@ -248,7 +253,7 @@ test "count_sample nil" {
     const func = struct {
         pub fn sin45() f64 {
             var x: f64 = 0;
-            std.mem.doNotOptimizeAway(&x);
+            dno(&x);
             return std.math.sin(x);
         }
     }.sin45;
@@ -297,7 +302,7 @@ test "timed_sample nil" {
     const func = struct {
         pub fn sin45() f64 {
             var x: f64 = 0;
-            std.mem.doNotOptimizeAway(&x);
+            dno(&x);
             return std.math.sin(x);
         }
     }.sin45;

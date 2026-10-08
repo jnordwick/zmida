@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const ArrayList = std.array_list.Managed;
 const Allocator = std.mem.Allocator;
@@ -16,7 +17,6 @@ pub const Trial = trial.Trial;
 pub const TrialDef = trial.TrialDef;
 pub const TrialStats = stats.TrialStats;
 
-const debug_warn = util.debug_warn;
 const verbose = util.verbose;
 const errexit = util.errexit;
 const argslen = util.argslen;
@@ -31,9 +31,15 @@ const check_cpu_files = util.check_cpu_files;
 // last TODO:
 // regen pngs
 
+/// A slightly modified version of std.mem.doNotOptimizeAway that tries to work
+/// around compiler issues around passing floats or vectors. For regular use,
+/// you do not need to use this; it is done internally. But, if you need to make
+/// your own loop (see examples/loop.zig), you will likely need to use this to
+/// prevent the compiler from dead code eliminating your function.
+pub const dno = util.dno;
+
 /// The environment for the runners. Don't touch this. Use EnvOpts instead.
 pub const Env = struct {
-    const builtin = @import("builtin");
     pub const callmod: std.builtin.CallModifier = b: {
         if (builtin.os.tag != .linux or builtin.cpu.arch != .x86_64)
             @compileError("Currently only supports Linux x64.");
@@ -84,6 +90,8 @@ pub const CountConfig = struct {
     sample_calls: u32 = 1_000,
     /// number of calls in a performance counter collection
     perf_calls: u32 = 1_000_000,
+    /// if each call rerpesents multiple units of work (mostly for vector code)
+    work_units: u64 = 1,
 };
 
 /// trial based on amount of time for each trial. best used for fewer samples over longer
@@ -98,6 +106,8 @@ pub const TimedConfig = struct {
     trial_millis: u32 = 2000,
     /// number milliseconds in a performance counter collection
     perf_millis: u32 = 2000,
+    /// if each call rerpesents multiple units of work (mostly for vector code)
+    work_units: u64 = 1,
 };
 
 /// trial based on time per trial, but an estimate is made for how many calls that takes,
@@ -112,6 +122,8 @@ pub const AdaptConfig = struct {
     trial_millis: u32 = 2000,
     /// number milliseconds in a performance counter collection
     perf_millis: u32 = 2000,
+    /// if each call rerpesents multiple units of work (mostly for vector code)
+    work_units: u64 = 1,
 };
 
 /// one of the trial configs.
@@ -174,6 +186,9 @@ pub const SamplesOpts = struct {
 pub const GnuplotOpts = struct {
     /// plot title
     title: ?[]const u8 = null,
+    typ: enum { candles, bars } = .bars,
+    width: u16 = 800,
+    height: u16 = 600,
 };
 
 /// quick shot bench. Uses the default value for adaptve trials
@@ -258,7 +273,7 @@ pub const Study = struct {
             },
             .timed => |c| {
                 if (std.Thread.use_pthreads) {
-                    verbose(0, "--- warning --- pthreads and Timed Config conflic.", .{});
+                    verbose(0, "--- warn --- pthreads and Timed Config conflic.", .{});
                 }
                 verbose(1, "Timed:\n", .{});
                 verbose(1, "\t- warmup millis: {d}\n", .{c.warmup_millis});
@@ -293,6 +308,7 @@ pub const Study = struct {
                     .trial_samples = c.trial_samples,
                     .sample_sweeps = idiv_up(u64, c.sample_calls, nargs),
                     .perf_sweeps = idiv_up(u64, c.perf_calls, nargs),
+                    .work_units = c.work_units,
                 } };
             },
             .timed => |c| {
@@ -302,6 +318,7 @@ pub const Study = struct {
                     .trial_samples = c.trial_samples,
                     .sample_nanos = idiv_up(u64, @as(u64, millis) * 1_000_000, c.trial_samples),
                     .perf_nanos = @as(u64, c.perf_millis) * 1_000_000,
+                    .work_units = c.work_units,
                 } };
             },
             .adapt => |c| {
@@ -313,6 +330,7 @@ pub const Study = struct {
                     .perf_nanos = @as(u64, c.perf_millis) * 1_000_000,
                     .est_sample_sweeps = 0,
                     .est_perf_sweeps = 0,
+                    .work_units = c.work_units,
                 } };
             },
         }
@@ -334,8 +352,13 @@ pub const Study = struct {
     pub fn write_text(this: *@This(), fname: ?[]const u8, topts: TextOpts) !void {
         const opts = topts;
         try this.statistics();
-        const file = try get_file(fname, ".txt");
+        const file = try get_file(fname, this.name, ".txt");
         defer if (fname != null) file.close(Env.io);
+        if (fname) |f| {
+            verbose(1, "writing text output to file: {s}.txt\n", .{
+                if (f.len > 0) f else this.name,
+            });
+        }
         var writer = file.writer(Env.io, &.{});
         const iface = &writer.interface;
         if (opts.mode == .lat) {
@@ -361,8 +384,13 @@ pub const Study = struct {
     pub fn write_summary(this: *@This(), fname: ?[]const u8, sopts: SummaryOpts) !void {
         const opts = sopts;
         try this.statistics();
-        const file = try get_file(fname, "-summary.csv");
+        const file = try get_file(fname, this.name, "-summary.csv");
         defer if (fname != null) file.close(Env.io);
+        if (fname) |f| {
+            verbose(1, "writing summary data to file: {s}-summary.csv\n", .{
+                if (f.len > 0) f else this.name,
+            });
+        }
         var writer = file.writer(Env.io, &.{});
         try out.csv_summary(&writer.interface, this.stats.items, opts);
     }
@@ -373,19 +401,31 @@ pub const Study = struct {
     pub fn write_samples(this: *@This(), fname: ?[]const u8, sopts: SamplesOpts) !void {
         const opts = sopts;
         try this.statistics();
-        const file = try get_file(fname, "-samples.csv");
+        const file = try get_file(fname, this.name, "-samples.csv");
         defer if (fname != null) file.close(Env.io);
+        if (fname) |f| {
+            verbose(1, "writing all sample data to file: {s}-samples.csv\n", .{
+                if (f.len > 0) f else this.name,
+            });
+        }
         var writer = file.writer(Env.io, &.{});
         try out.csv_samples(&writer.interface, this.stats.items, opts);
     }
 
     /// write gnuplot of timing summary. the file includes both gnuplot instructions and data.
     /// fname: filename or null for stdout
-    /// opts: output options
-    pub fn write_gnuplot(this: *@This(), fname: ?[]const u8, opts: GnuplotOpts) !void {
+    /// sopts: output options
+    pub fn write_gnuplot(this: *@This(), fname: ?[]const u8, sopts: GnuplotOpts) !void {
+        var opts = sopts;
+        opts.title = opts.title orelse this.name;
         try this.statistics();
-        const file = try get_file(fname, ".gp");
+        const file = try get_file(fname, this.name, ".gp");
         defer if (fname != null) file.close(Env.io);
+        if (fname) |f| {
+            verbose(1, "writing gnuplot timing data to file: {s}-perf.gp\n", .{
+                if (f.len > 0) f else this.name,
+            });
+        }
         var writer = file.writer(Env.io, &.{});
         try out.gnuplot(&writer.interface, this.stats.items, opts);
     }
@@ -393,11 +433,18 @@ pub const Study = struct {
     /// write gnuplot of performance counter data.
     /// the file includes both gnuplot instructions and data.
     /// fname: filename or null for stdout
-    /// opts: output options
-    pub fn write_gnuplot_perf(this: *@This(), fname: ?[]const u8, opts: GnuplotOpts) !void {
+    /// sopts: output options
+    pub fn write_gnuplot_perf(this: *@This(), fname: ?[]const u8, sopts: GnuplotOpts) !void {
+        var opts = sopts;
+        opts.title = opts.title orelse this.name;
         try this.statistics();
-        const file = try get_file(fname, "-perf.gp");
+        const file = try get_file(fname, this.name, "-perf.gp");
         defer if (fname != null) file.close(Env.io);
+        if (fname) |f| {
+            verbose(1, "writing gnuplot perf counters to file: {s}-perf.gp\n", .{
+                if (f.len > 0) f else this.name,
+            });
+        }
         var writer = file.writer(Env.io, &.{});
         try out.gnuplot_perf(&writer.interface, this.stats.items, opts);
     }
@@ -432,16 +479,25 @@ pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
     Env.alloc = pinit.gpa;
 
     const opts = parse_opts(pinit, env_opts);
-    debug_warn();
+    Env.verbose = opts.verbose;
 
-    if (Env.callmod != .auto) {
-        verbose(1, "Overriding @call modifier {}\n", .{Env.callmod});
+    if (@import("builtin").mode == .Debug and Env.debug_warn) {
+        verbose(0, "--- warn --- Compiled in debug mode.\n", .{});
+        if (!util.use_llvm_asm) {
+            verbose(0, "--- warn --- non-LLVM backend: vector/float barriers may add memory traffic\n", .{});
+        }
+        Env.debug_warn = false;
     }
 
-    Env.verbose = opts.verbose;
+    if (Env.callmod != .auto) {
+        verbose(1, "overriding @call modifier {}\n", .{Env.callmod});
+    }
+    verbose(2, "compiler backend: {}\n", .{builtin.zig_backend});
+    verbose(2, "optimization mode: {}\n", .{builtin.mode});
+
     Env.use_tsc = opts.use_tsc;
     time.Clock.setup(if (Env.use_tsc) .tsc else .monotonic) catch {
-        verbose(0, "--- warning --- No capable TSC. using monotonic.\n", .{});
+        verbose(0, "--- warnng --- No capable TSC. using monotonic clock.\n", .{});
     };
     Env.pin_cpu = opts.pin_cpu;
     if (Env.pin_cpu) |cpu| {
@@ -460,10 +516,16 @@ pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
     }
     Env.set_prio = opts.set_prio;
     if (Env.set_prio) |prio| {
-        sys.setpriority(sys.PRIO.PROCESS, 0, prio) catch |e| {
-            errexit("could not set priority (must be root for < 0) to {}: {}", .{ prio, e });
-        };
-        verbose(1, "set priority to {}\n", prio);
+        const res = sys.setpriority(sys.PRIO.PROCESS, 0, prio);
+        if (res) {
+            verbose(1, "set priority to {}\n", prio);
+        } else |err| {
+            if (err == error.errno_acces) {
+                verbose(0, "--- warn --- could not set priority to {} must be root: {}\n", .{ prio, err });
+            } else {
+                verbose(0, "--- warn --- could not set priority to {}: {}\n", .{ prio, err });
+            }
+        }
     }
     Env.perf_cpu = opts.perf_cpu;
     Env.perf_mem = opts.perf_mem;

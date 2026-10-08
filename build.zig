@@ -28,6 +28,7 @@ pub fn build(b: *std.Build) void {
     add_example(b, mod, &target, optimize, "gendata");
     add_example(b, mod, &target, optimize, "plots");
     add_example(b, mod, &target, optimize, "full");
+    add_example(b, mod, &target, optimize, "loop");
 
     // build test
     const mod_tests = b.addTest(.{

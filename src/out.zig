@@ -433,7 +433,8 @@ pub fn csv_samples(
     try writer.flush();
 }
 
-const gnuplot_template = @embedFile("template.gp");
+const gnuplot_template_candles = @embedFile("template_candles.gp");
+const gnuplot_template_bars = @embedFile("template_bars.gp");
 
 pub fn gnuplot(
     writer: *std.Io.Writer,
@@ -453,7 +454,18 @@ pub fn gnuplot(
         try writer.writeByte('\n');
     }
     try writer.print("EOD\n\n", .{});
-    try writer.print(gnuplot_template, .{ .title = suite_title, .units = units });
+    const print_args = .{
+        .width = opts.width,
+        .height = opts.height,
+        .title = suite_title,
+        .units = units,
+        .ofile = suite_title,
+    };
+    if (opts.typ == .bars) {
+        try writer.print(gnuplot_template_bars, print_args);
+    } else {
+        try writer.print(gnuplot_template_candles, print_args);
+    }
     try writer.flush();
 }
 
@@ -478,8 +490,15 @@ pub fn gnuplot_perf(
             },
         );
     }
+    const suite_title = opts.title orelse "zmida";
     try writer.print("EOD\n\n", .{});
-    try writer.print(gnuplot_perf_template, .{ .title = opts.title orelse "zmida" });
+    const print_args = .{
+        .width = opts.width,
+        .height = opts.height,
+        .title = suite_title,
+        .ofile = suite_title,
+    };
+    try writer.print(gnuplot_perf_template, print_args);
     try writer.flush();
 }
 

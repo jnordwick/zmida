@@ -117,8 +117,8 @@ pub fn get_tsc_freq() ?u64 {
         const mhz = leaf.eax & 0xffff;
         if (mhz != 0) {
             // TODO: do a calibration check
-            util.verbose(0, "--- warning --- using leaf 0x16, base freq may not be clock freq: {}\n", .{mhz});
-            util.verbose(0, "--- warning --- consider EnvOpts.use_tsc=false\n", .{});
+            util.verbose(0, "--- warn --- using leaf 0x16, base freq may not be clock freq: {}\n", .{mhz});
+            util.verbose(0, "--- warn --- consider EnvOpts.use_tsc=false\n", .{});
             return @as(u64, mhz) * 1_000_000;
         }
     }

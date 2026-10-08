@@ -237,6 +237,7 @@ My ongoing love-hate thing with zig:
 - [ ] io is painfully overdone. why do i need it to get time?
 - [ ] casting casting everywhere and getting worse by the release
 - [ ] no standard doc comment syntax
+- [ ] build.zig way to print out where it put the binary without installing
 
 * License
 

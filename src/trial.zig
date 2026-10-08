@@ -18,6 +18,7 @@ pub const CountDef = struct {
     trial_samples: u64,
     sample_sweeps: u64,
     perf_sweeps: u64,
+    work_units: u64,
 };
 
 pub const TimedDef = struct {
@@ -25,6 +26,7 @@ pub const TimedDef = struct {
     trial_samples: u64,
     sample_nanos: u64,
     perf_nanos: u64,
+    work_units: u64,
 };
 
 pub const AdaptDef = struct {
@@ -34,6 +36,7 @@ pub const AdaptDef = struct {
     perf_nanos: u64,
     est_sample_sweeps: u64,
     est_perf_sweeps: u64,
+    work_units: u64,
 };
 
 pub const TrialDef = union(enum) {
@@ -60,6 +63,7 @@ pub const Trial = struct {
     perf: PerfSample,
     def: TrialDef,
     calls_per_sweep: u64 = 0, // calls per sweep, args.len
+    work_units: u64 = 1, // units of work per call
 
     pub fn init(def: TrialDef, name: []const u8) Trial {
         return .{
@@ -96,6 +100,7 @@ pub const Trial = struct {
         verbose(1, "Trial {s}", .{
             this.name,
         });
+        this.work_units = this.def.count.work_units;
 
         // warmup
         verbose(1, " warmup {d}k calls", .{
@@ -108,7 +113,7 @@ pub const Trial = struct {
             func,
             args,
         ));
-        try this.bycount_samples(
+        try this.count_samples(
             func,
             args,
             this.def.count.trial_samples,
@@ -120,6 +125,7 @@ pub const Trial = struct {
     pub fn byadapt(this: *@This(), func: anytype, args: anytype) !void {
         const argstype = util.argstype_of(@TypeOf(args));
         verbose(1, "Trial {s}", .{this.name});
+        this.work_units = this.def.adapt.work_units;
 
         // warmup
         verbose(1, " warmup ({d:.3}ms)\n", .{float_div(f64, this.def.adapt.warmup_nanos, 1e6)});
@@ -141,7 +147,7 @@ pub const Trial = struct {
         this.def.adapt.est_sample_sweeps = @intFromFloat(ftimesweeps);
         this.def.adapt.est_perf_sweeps = @intFromFloat(fperfsweeps);
 
-        try this.bycount_samples(
+        try this.count_samples(
             func,
             args,
             this.def.adapt.trial_samples,
@@ -150,7 +156,7 @@ pub const Trial = struct {
         );
     }
 
-    fn bycount_samples(this: *@This(), func: anytype, args: anytype, trial_samples: u64, sample_sweeps: u64, perf_sweeps: u64) !void {
+    fn count_samples(this: *@This(), func: anytype, args: anytype, trial_samples: u64, sample_sweeps: u64, perf_sweeps: u64) !void {
         const argstype = util.argstype_of(@TypeOf(args));
         // timed
         verbose(1, "timing samples {d} sweeps @ {d} calls", .{
@@ -161,6 +167,7 @@ pub const Trial = struct {
             verbose(2, " {d}", i + 1);
             var res = try runners.count_sample(argstype, null, sample_sweeps, func, args);
             res.ord = i;
+            res.calls *= this.work_units;
             try this.data.append(res);
         }
         verbose(1, "\n", .{});
@@ -180,7 +187,7 @@ pub const Trial = struct {
                 func,
                 args,
             );
-            this.perf.cpu_calls = res.calls;
+            this.perf.cpu_calls = res.calls * this.work_units;
             try panel.read(0, this.perf.cpu.as_payload());
             panel.deinit();
         }
@@ -199,7 +206,7 @@ pub const Trial = struct {
                 func,
                 args,
             );
-            this.perf.mem_calls = res.calls;
+            this.perf.mem_calls = res.calls * this.work_units;
             try panel.read(0, this.perf.memr.as_payload());
             try panel.read(1, this.perf.memw.as_payload());
             panel.deinit();
@@ -209,6 +216,7 @@ pub const Trial = struct {
     pub fn bytimed(this: *@This(), func: anytype, args: anytype) !void {
         const argstype = util.argstype_of(@TypeOf(args));
         verbose(1, "Trial {s}", .{this.name});
+        this.work_units = this.def.timed.work_units;
 
         // warmup
         verbose(1, " warmup ({d:.3}ms)", .{
@@ -235,6 +243,7 @@ pub const Trial = struct {
                 args,
             );
             res.ord = i;
+            res.calls *= this.work_units;
             try this.data.append(res);
         }
         verbose(1, "\n", .{});
@@ -255,7 +264,7 @@ pub const Trial = struct {
                 func,
                 args,
             );
-            this.perf.cpu_calls = res.calls;
+            this.perf.cpu_calls = res.calls * this.work_units;
             try panel.read(0, this.perf.cpu.as_payload());
         }
 
@@ -274,7 +283,7 @@ pub const Trial = struct {
                 func,
                 args,
             );
-            this.perf.mem_calls = res.calls;
+            this.perf.mem_calls = res.calls * this.work_units;
             try panel.read(0, this.perf.memr.as_payload());
             try panel.read(1, this.perf.memw.as_payload());
         }

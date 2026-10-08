@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const tt = std.testing;
 const Allocator = std.mem.Allocator;
 
@@ -7,6 +8,46 @@ const perf = @import("perf.zig");
 
 const ArgsType = @import("trial.zig").ArgsType;
 const Env = root.Env;
+
+pub const use_llvm_asm = builtin.zig_backend == .stage2_llvm;
+
+/// Do Not Optimize Away wrapper. std.mem.doNotOptimizeAway has some issues
+/// revolving around simd and float register and will optimize through the asm
+/// blocks as if the inputs are unused. If you get this error message:
+///     error: couldn't allocate input reg for constraint 'x'
+/// a @Vector got through that the platform doesn't understand.
+pub fn dno(x: anytype) void {
+    if (comptime !use_llvm_asm) return std.mem.doNotOptimizeAway(x);
+    const T = @TypeOf(x);
+    switch (@typeInfo(T)) {
+        .float => asm volatile (""
+            :
+            : [_] "x" (x),
+        ),
+        .vector => {
+            const bits = @bitSizeOf(T);
+            if (bits <= 128) {
+                asm volatile (""
+                    :
+                    : [_] "x" (x),
+                );
+            } else if (bits <= 256 and builtin.cpu.has(.x86, .avx)) {
+                asm volatile (""
+                    :
+                    : [_] "v" (x),
+                );
+            } else if (bits <= 512 and builtin.cpu.has(.x86, .avx512f)) {
+                asm volatile (""
+                    :
+                    : [_] "v" (x),
+                );
+            } else {
+                std.mem.doNotOptimizeAway(x);
+            }
+        },
+        else => std.mem.doNotOptimizeAway(x),
+    }
+}
 
 pub fn verbose(lev: i32, comptime fmt: []const u8, args: anytype) void {
     const of = if (lev < 0) std.Io.File.stdout() else std.Io.File.stderr();
@@ -19,14 +60,6 @@ pub fn verbose(lev: i32, comptime fmt: []const u8, args: anytype) void {
         writer.interface.flush() catch |e| {
             errexit("flush failed: {}", e);
         };
-    }
-}
-
-pub fn debug_warn() void {
-    // Test the ORIGINAL io, not Env.io.
-    if (@import("builtin").mode == .Debug and Env.debug_warn) {
-        verbose(0, "--- warning --- Compiled in debug mode.\n", .{});
-        Env.debug_warn = false;
     }
 }
 
@@ -228,15 +261,14 @@ pub fn get_fname(comptime func: anytype) []const u8 {
     return WhoAreYou(func).who;
 }
 
-pub fn get_file(fname: ?[]const u8, suffix: []const u8) !std.Io.File {
-    if (fname == null) {
-        return std.Io.File.stdout();
-    }
-    const len = fname.?.len + suffix.len;
+pub fn get_file(filename: ?[]const u8, default: []const u8, suffix: []const u8) !std.Io.File {
+    if (filename == null) return std.Io.File.stdout();
+    const fname = if (filename.?.len > 0) filename.? else default;
+    const len = fname.len + suffix.len;
     if (len >= 1024) errexit("filename to long, max 1024 was {}", len);
     var name: [1024]u8 = undefined;
-    std.mem.copyForwards(u8, name[0..], fname.?);
-    std.mem.copyForwards(u8, name[fname.?.len..], suffix);
+    std.mem.copyForwards(u8, name[0..], fname);
+    std.mem.copyForwards(u8, name[fname.len..], suffix);
     return std.Io.Dir.cwd().createFile(Env.io, name[0..len], .{});
 }
 
@@ -287,13 +319,13 @@ pub fn check_cpu_files(x: u32) void {
 
     if (gov) |g| {
         if (!epp_driven and !std.mem.eql(u8, g, "performance")) {
-            verbose(0, "--- warning --- cpu {d}: scaling governor is {s}, results might be affected\n", .{ x, g });
+            verbose(0, "--- warn --- cpu {d}: scaling governor is {s}, results might be affected\n", .{ x, g });
         }
     }
     if (epp) |e| {
         // power / balance_power are bad; balance_performance and default are fine
         if (std.mem.indexOf(u8, e, "power") != null) {
-            verbose(0, "--- warning --- cpu {d}: energy performance pref is {s}, results might be affected\n", .{ x, e });
+            verbose(0, "--- warn --- cpu {d}: energy performance pref is {s}, results might be affected\n", .{ x, e });
         }
     }
 }

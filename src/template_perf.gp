@@ -1,10 +1,14 @@
 # name inst_per_call cycle_per_call brmiss_per_call branch_per_call l1i_miss_per_call
+
+set terminal pngcairo size {[width]d},{[height]d} enhanced font "Sans,12"
+set output "{[ofile]s}-perf.png"
+
 set multiplot layout 2,3 title "{[title]s} — perf counters (per call)"
 set style data histograms
 set style histogram clustered gap 1
 set style fill solid 0.7 border -1
 set boxwidth 0.8
-set xtics rotate by -45 scale 0
+set xtics rotate by -45 scale 0 noenhanced
 set grid y
 unset key
 
@@ -24,3 +28,4 @@ set title "L1i misses/call"
 plot $Data using 6:xtic(1) linecolor rgb "#9467bd"
 
 unset multiplot
+unset output
