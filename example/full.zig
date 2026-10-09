@@ -23,8 +23,8 @@ pub fn main(init: std.process.Init) !void {
     defer study.deinit();
 
     try study.write_text(null, .{ .mode = .thru });
-    try study.write_gnuplot("div", .{});
-    try study.write_gnuplot_perf("div", .{});
+    try study.write_gnuplot("", .{});
+    try study.write_gnuplot_perf("", .{});
 }
 
 const Vec = @Vector(8, f32);

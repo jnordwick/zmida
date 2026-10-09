@@ -235,9 +235,15 @@ My ongoing love-hate thing with zig:
 - [ ] anytype still sucks. I want `fn func(x: []const anytype)` as a minimum
 - [ ] io is painfully overdone. Zig Io is J2EE Spring for C.
 - [ ] io is painfully overdone. why do i need it to get time?
-- [ ] casting casting everywhere and getting worse by the release
+- [ ] casting casting everywhere and getting worse by the release. here are just a few:
+  - [ ] add second form to all casts, @intFromFloat(type, val)
 - [ ] no standard doc comment syntax
-- [ ] build.zig way to print out where it put the binary without installing
+- [ ] comptime is incomplete. there are type that cannot be reifed in comptime
+- [ ] https://github.com/ziglang/zig/issues/10710 was a short-sighted bad idea
+- [ ] no extern tuples, cannot construct some tuples: struct {type=f32,f32,f32}
+- [ ] build.zig still sucks balls
+  - [ ] need way to print location of installed target to use in scripts
+  - [ ] no easy way to say steps cannot be run in parallel 
 
 * License
 

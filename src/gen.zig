@@ -37,6 +37,8 @@ pub fn tie2t(comptime T: type, comptime n: u64, x: [n]T, y: [n]T) [n]struct { co
 }
 
 /// integer inclusive range generator in [begin, end] by step
+/// Generally prefer array inputs. Generators will add a small amount of machinery
+/// but should be used instead of large arrays to avoid any extra L1 memory traffic.
 pub fn Range(T: type) type {
     return struct {
         /// so the runner knows the this is a generator and not an argument.
@@ -67,8 +69,9 @@ pub fn Range(T: type) type {
     };
 }
 
-/// floating point linear space generator.
-/// generates n points in [begin, end]
+/// floating point linear space generator. generates n points in [begin, end]
+/// Generally prefer array inputs. Generators will add a small amount of machinery
+/// but should be used instead of large arrays to avoid any extra L1 memory traffic.
 pub fn LinSpace(T: type) type {
     return struct {
         pub const __zm__generator__ = true;

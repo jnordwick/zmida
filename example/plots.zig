@@ -16,8 +16,8 @@ pub fn main(init: std.process.Init) !void {
     defer study.deinit();
 
     try study.write_text(null, .{ .mode = .lat });
-    try study.write_gnuplot("vcalls", .{});
-    try study.write_gnuplot_perf("vcalls", .{});
+    try study.write_gnuplot("", .{});
+    try study.write_gnuplot_perf("", .{});
 }
 
 const vtable = struct {

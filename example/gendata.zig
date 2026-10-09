@@ -10,6 +10,13 @@ pub fn main(init: std.process.Init) !void {
 
     const ls = zm.gen.LinSpace(f32).init(1, 10, 100);
     try zm.bench(&init, just_log, ls);
+
+    var lsarray: [100]f32 = undefined;
+    const step: f32 = 9.0 / 99.0;
+    for (0..100) |i| {
+        lsarray[i] = 1.0 + step * @as(f32, @floatFromInt(i));
+    }
+    try zm.bench(&init, just_log, &lsarray);
 }
 
 fn std_log(base: f32, x: f32) f32 {

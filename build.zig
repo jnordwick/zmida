@@ -4,8 +4,6 @@ const ResolvedTarget = std.Build.ResolvedTarget;
 const OptimizeMode = std.builtin.OptimizeMode;
 
 var ex_build_step: *std.Build.Step = undefined;
-var ex_run_step: *std.Build.Step = undefined;
-var ex_last_step: ?*std.Build.Step = null;
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -18,10 +16,6 @@ pub fn build(b: *std.Build) void {
 
     // examples
     ex_build_step = b.step("examples", "Build all examples");
-    ex_run_step = b.step("run-examples", "Run all examples");
-
-    // tried to automate this build way too much of a hassle having to basically,
-    // use C to write a build script.
     add_example(b, mod, &target, optimize, "readme");
     add_example(b, mod, &target, optimize, "basic");
     add_example(b, mod, &target, optimize, "simple");
@@ -71,12 +65,6 @@ fn add_example(
     );
     const run_cmd = b.addRunArtifact(example);
     run_step.dependOn(&run_cmd.step);
-    if (ex_last_step) |s| {
-        s.dependOn(run_step);
-    } else {
-        ex_run_step.dependOn(run_step);
-    }
-    ex_last_step = run_step;
 
     if (b.args) |args| {
         run_cmd.addArgs(args);
