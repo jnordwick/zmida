@@ -1,8 +1,9 @@
 const std = @import("std");
 const zm = @import("zmida");
 
-// I want to be able to pick out the assembly and see what is happening around it.
-// Since I'm looping over a large array, a single extra function call overhead
+// I want to be able to pick out the assembly and make sure the entire
+// function is compiled without specializing on input. Since I'm looping
+// over a large array, a single extra function call overhead
 // will be amortized over many calls.
 pub const __zm__callmod__ = std.builtin.CallModifier.never_inline;
 

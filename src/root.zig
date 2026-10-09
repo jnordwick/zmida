@@ -186,8 +186,11 @@ pub const SamplesOpts = struct {
 pub const GnuplotOpts = struct {
     /// plot title
     title: ?[]const u8 = null,
+    /// simple bar chart (generally works beter) or more complex candlestick
     typ: enum { candles, bars } = .bars,
+    /// pixel width of png image
     width: u16 = 800,
+    /// pixel height of png image
     height: u16 = 600,
 };
 
@@ -347,7 +350,7 @@ pub const Study = struct {
     }
 
     /// write out results in text tables
-    /// fname: filename or stdout if null
+    /// fname: filename or stdout if null, if filename is "", use the study name
     /// toptts: output options
     pub fn write_text(this: *@This(), fname: ?[]const u8, topts: TextOpts) !void {
         const opts = topts;
@@ -379,7 +382,7 @@ pub const Study = struct {
     }
 
     /// write ingestable format of summary data (currently only support csv/tsv)
-    /// fname: filename or null for stdout
+    /// fname: filename or stdout if null, if filename is "", use the study name
     /// sopts: output options
     pub fn write_summary(this: *@This(), fname: ?[]const u8, sopts: SummaryOpts) !void {
         const opts = sopts;
@@ -396,7 +399,7 @@ pub const Study = struct {
     }
 
     /// write ingestable format of detailed sample data (no performance data)
-    /// fname: filename or null for stdout
+    /// fname: filename or stdout if null, if filename is "", use the study name
     /// sopts: output options
     pub fn write_samples(this: *@This(), fname: ?[]const u8, sopts: SamplesOpts) !void {
         const opts = sopts;
@@ -413,7 +416,7 @@ pub const Study = struct {
     }
 
     /// write gnuplot of timing summary. the file includes both gnuplot instructions and data.
-    /// fname: filename or null for stdout
+    /// fname: filename or stdout if null, if filename is "", use the study name
     /// sopts: output options
     pub fn write_gnuplot(this: *@This(), fname: ?[]const u8, sopts: GnuplotOpts) !void {
         var opts = sopts;
@@ -432,7 +435,7 @@ pub const Study = struct {
 
     /// write gnuplot of performance counter data.
     /// the file includes both gnuplot instructions and data.
-    /// fname: filename or null for stdout
+    /// fname: filename or stdout if null, if filename is "", use the study name
     /// sopts: output options
     pub fn write_gnuplot_perf(this: *@This(), fname: ?[]const u8, sopts: GnuplotOpts) !void {
         var opts = sopts;
