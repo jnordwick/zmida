@@ -140,7 +140,7 @@ lgamma      |  1.806      558.8      309.4    0.003 |   47.79      0.004       7
 
 The gnuplot output (see the [[./HOWTO.org][HOWTO]] for how to render it):
 
-[[./example/out/gamma.png]]
+[[./example/out/gamma-bars.png]]
 
 [[./example/out/gamma-perf.png]]
 
