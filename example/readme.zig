@@ -14,18 +14,17 @@ pub fn main(init: std.process.Init) !void {
     defer study.deinit();
 
     try study.write_text(null, .{ .mode = .thru });
-    try study.write_gnuplot("gamma", .{}); // gamma.gp
-    try study.write_gnuplot_perf("gamma", .{}); // gamma-perf.gp
-}
-
-fn logtgamma(x: f64) f64 {
-    return std.math.log(f64, std.math.e, std.math.gamma(f64, x));
+    try study.write_gnuplot("", .{}); // gamma.gp
+    try study.write_gnuplot_perf("", .{}); // gamma-perf.gp
 }
 
 fn nlogtgamma(x: f64) f64 {
     return @log(std.math.gamma(f64, x));
 }
-
 fn lgamma(x: f64) f64 {
     return std.math.lgamma(f64, x);
+}
+
+fn logtgamma(x: f64) f64 {
+    return std.math.log(f64, std.math.e, std.math.gamma(f64, x));
 }

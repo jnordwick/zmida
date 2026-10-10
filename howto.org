@@ -292,8 +292,12 @@ The header line =clock: .tsc @ N Hz= tells you which one was used.
 
 ** 2.6 Keeping the compiler honest
 
-The harness uses =doNotOptimizeAway= on the arguments and on the result of every
-call, but the compiler can still do clever things when it can see everything.
+The harness uses a slighly modified version of =std.mem.doNotOptimizeAway= on the arguments
+and on the result of every call, but the compiler can still do clever things when it can
+see everything. The =zm.dno= call (pub) will use a slighly more efficient
+method when using the llvm backend, and a warning will be printed when the self-hosted
+backend is used. If you are writing an inner loop yourself see =example/loop.zig=).
+
 Two controls:
 
 *Inside your function.* If the compiler can prove an input is constant, it may
@@ -320,6 +324,7 @@ measurement, and there is no automatic subtraction. Measure it yourself by
 benchmarking a function that does nothing:
 
 #+BEGIN_SRC zig
+// the argument list should mimick the other functions.
 fn nothing(x: u64) u64 {
     std.mem.doNotOptimizeAway(&x);
     return x;
@@ -329,6 +334,12 @@ fn nothing(x: u64) u64 {
 and put it in the tuple next to the functions you care about. =example/plots.zig=
 does this (=ccall=) and the difference between it and the others is the part that is
 yours.
+
+The reason the harness does not attempt to do this is that it is a tricky problem
+and the baseline often comes up artificially low and unneven. Register spills and
+memory traffic might only show up depending on uncontrollable factors. So instead of
+getting it wrong and adjustment the measurements in a faulty way, I decided to punt
+on it. If it is needed, I might return to the problem.
 
 ** 2.8 Reading results in code
 
@@ -347,14 +358,13 @@ for (study.trials.items[0].data.items) |sample| {
 #+END_SRC
 
 Note =percentiles= is indexed best-first: =[0]= is the worst latency, =[100]= the best.
-Don't add trials to =study.trials= after calling =statistics()=; the stats hold pointers into it.
 
 ** 2.9 Troubleshooting
 
 | symptom                                        | what to check                                   |
 |------------------------------------------------+-------------------------------------------------|
-| =!!! WARNING !!! Compiled in debug mode=       | build with =-Doptimize=ReleaseFast=             |
-| =!!! WARNING !!! No capable TSC. using monotonic= | no invariant TSC / CPUID leaves; harmless    |
+| =--- warn --- Compiled in debug mode=          | build with =-Doptimize=ReleaseFast=             |
+| =--- warn --- No capable TSC. using monotonic= | no invariant TSC / CPUID leaves; harmless       |
 | =unknown option name: ...=                     | an argument starting with =-= that isn't zmida's |
 | =pin cpu wants cpu number=                     | wrote =-c 1=; use =-c=1=                        |
 | perf =errno_acces= / =errno_perm=              | =perf_event_paranoid=                           |

@@ -1,13 +1,5 @@
 * zmida -- zig benchmarking harness
 
-If you are seeing this as plain text,  it is related to an Oct 2nd GiHub bug:
-https://github.com/github/markup/issues/2105
-https://github.com/github/markup/pull/2106
-
-Hopefully it is fixed soon
-
---
-
 This is for benchmarking high performance, cpu bound code.
 
 - arbitrary argument functions (zero, one, or many arguments)
@@ -99,13 +91,13 @@ pub fn main(init: std.process.Init) !void {
     defer study.deinit();
 
     try study.write_text(null, .{ .mode = .thru });
-    try study.write_gnuplot("gamma", .{}); // gamma.gp
-    try study.write_gnuplot_perf("gamma", .{}); // gamma-perf.gp
+    try study.write_gnuplot("", .{}); // gamma.gp
+    try study.write_gnuplot_perf("", .{}); // gamma-perf.gp
 }
 #+END_SRC
 
 Here is what the run looks like (text output goes to stdout, progress to stderr):
-
+TODO: MAKE NEW OUTPUT CAPTURE
 #+BEGIN_EXAMPLE
 set cpu affinity to 1
 Running study gamma
@@ -166,8 +158,6 @@ the options passed in code. Values are attached with =-x=value=, not
 | =-n=, =--nice=N         | set niceness, -20 to 19 (negative needs root) |
 | =-p=, =--perf=WHAT      | =cpu=, =mem=, or =both=                   |
 
-zmida claims every argument that starts with =-=; unknown ones are an error.
-
 * Examples
 
 The =example/= directory has runnable programs:
@@ -176,11 +166,14 @@ The =example/= directory has runnable programs:
 |---------------+--------------------------------------------------------|
 | =simple.zig=  | one-line =bench()= with one function and with several  |
 | =basic.zig=   | a =Study= with perf counters and throughput output     |
+| =full.zig=    | representative =Study= with multiple output            |
 | =gendata.zig= | multi-argument functions, =gen.tie=, =gen.LinSpace=    |
+| =loop.zig=    | functions that has their own internal work loop        |
 | =plots.zig=   | gnuplot output; comparing call styles (virtual calls)  |
+| =readme.zig=  | the example code from this readme                      |
 
 #+BEGIN_SRC sh
-zig build run-basic -Doptimize=ReleaseFast -- -c=1 -p=cpu
+zig build run-basic --release=fast -- -c=1 -p=cpu # run basic example, pin cpu and cpu counters
 zig build examples        # build them all
 #+END_SRC
 
@@ -219,7 +212,6 @@ These are the next few things I want to work on:
 - better documentation and more examples
 - better looking gnuplot output
 - baseline (empty function) subtraction, after v1
-- load_factor for when a function has a loop for the timed call
 
 * AI
 
@@ -228,7 +220,8 @@ related code and files, documentation, and to generate test code.
 
 * Ten Things I Hate About You
 
-My ongoing love-hate thing with zig:
+My ongoing love-hate thing with zig. These are my notes for issues I want to find
+out how to do better or complain about and try to get fixed.
 
 - [ ] a way per test, to signal this should be compiled and attached in the documentation
   but is not a test, it is an example
@@ -242,8 +235,11 @@ My ongoing love-hate thing with zig:
 - [ ] https://github.com/ziglang/zig/issues/10710 was a short-sighted bad idea
 - [ ] no extern tuples, cannot construct some tuples: struct {type=f32,f32,f32}
 - [ ] build.zig still sucks balls
-  - [ ] need way to print location of installed target to use in scripts
-  - [ ] no easy way to say steps cannot be run in parallel 
+  - [ ] need way to print location of binary to use in scripts
+  - [ ] no easy way to say steps cannot be run in parallel
+- [ ] way to add unique breakcrumb to the instruction stream
+- [ ] should be able to curry comptime function arguments
+
 
 * License
 
