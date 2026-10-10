@@ -150,13 +150,13 @@ Any program that calls =zm.init= (or =bench=) accepts these. They override
 the options passed in code. Values are attached with =-x=value=, not
 =-x value=.
 
-| switch                  | meaning                                   |
-|-------------------------+-------------------------------------------|
-| =-v=, =--verbose=N      | 0 silent, 1 normal, 2 trace               |
-| =-t=, =--tsc=[on/off]   | use TSC for timing (on by default)        |
-| =-c=, =--cpu=N          | pin to cpu N                              |
+| switch                  | meaning                                       |
+|-------------------------+-----------------------------------------------|
+| =-v=, =--verbose=N      | 0 silent, 1 normal, 2 trace                   |
+| =-t=, =--tsc=[on/off]   | use TSC for timing (on by default)            |
+| =-c=, =--cpu=N          | pin to cpu N                                  |
 | =-n=, =--nice=N         | set niceness, -20 to 19 (negative needs root) |
-| =-p=, =--perf=WHAT      | =cpu=, =mem=, or =both=                   |
+| =-p=, =--perf=WHAT      | =cpu=, =mem=, or =both=                       |
 
 * Examples
 
