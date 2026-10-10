@@ -13,16 +13,18 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/root.zig"),
         .target = target,
     });
-
+    const inc_examples = b.option(bool, "examples", "Build the example programs [default: false]") orelse false;
     // examples
-    ex_build_step = b.step("examples", "Build all examples");
-    add_example(b, mod, &target, optimize, "readme");
-    add_example(b, mod, &target, optimize, "basic");
-    add_example(b, mod, &target, optimize, "simple");
-    add_example(b, mod, &target, optimize, "gendata");
-    add_example(b, mod, &target, optimize, "plots");
-    add_example(b, mod, &target, optimize, "full");
-    add_example(b, mod, &target, optimize, "loop");
+    if (inc_examples) {
+        ex_build_step = b.step("examples", "Build all examples");
+        add_example(b, mod, &target, optimize, "readme");
+        add_example(b, mod, &target, optimize, "basic");
+        add_example(b, mod, &target, optimize, "simple");
+        add_example(b, mod, &target, optimize, "gendata");
+        add_example(b, mod, &target, optimize, "plots");
+        add_example(b, mod, &target, optimize, "full");
+        add_example(b, mod, &target, optimize, "loop");
+    }
 
     // build test
     const mod_tests = b.addTest(.{
@@ -51,12 +53,13 @@ fn add_example(
             },
         }),
     });
+    const install_step = b.addInstallArtifact(example, .{});
 
     const build_step = b.step(
         "build-" ++ name,
-        "Build " ++ name ++ " example",
+        "Build and install " ++ name ++ " example",
     );
-    build_step.dependOn(&example.step);
+    build_step.dependOn(&install_step.step);
     ex_build_step.dependOn(build_step);
 
     const run_step = b.step(
@@ -66,7 +69,5 @@ fn add_example(
     const run_cmd = b.addRunArtifact(example);
     run_step.dependOn(&run_cmd.step);
 
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    run_cmd.addPassthruArgs();
 }

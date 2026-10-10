@@ -176,12 +176,12 @@ test "tie2t" {
 
 fn TieType(comptime tuple: type) type {
     const si = @typeInfo(tuple).@"struct";
-    const N = si.fields.len;
+    const N = si.field_types.len;
     var ftypes: [N]type = undefined;
 
     var arr_len = 0;
     inline for (0..N) |i| {
-        switch (@typeInfo(si.fields[i].type)) {
+        switch (@typeInfo(si.field_types[i])) {
             .array => |t| {
                 if (arr_len != 0 and arr_len != t.len)
                     @compileError("Array lengths must match");
@@ -192,9 +192,9 @@ fn TieType(comptime tuple: type) type {
     }
 
     inline for (0..N) |i| {
-        ftypes[i] = switch (@typeInfo(si.fields[i].type)) {
+        ftypes[i] = switch (@typeInfo(si.field_types[i])) {
             .array => |t| t.child,
-            else => si.fields[i].type,
+            else => si.field_types[i],
         };
     }
     const TupType = @Tuple(&ftypes);
@@ -205,12 +205,12 @@ fn TieType(comptime tuple: type) type {
 /// x: a tuple of arrays and anything else is considered a scalar. all array must be same length.
 pub fn tie(x: anytype) TieType(@TypeOf(x)) {
     const RetType = TieType(@TypeOf(x));
-    const fields = @typeInfo(@TypeOf(x)).@"struct".fields;
+    const fields = @typeInfo(@TypeOf(x)).@"struct".field_types;
 
     var ret: RetType = undefined;
     inline for (0..ret.len) |i| {
         inline for (0..fields.len) |f| {
-            ret[i][f] = switch (@typeInfo(fields[f].type)) {
+            ret[i][f] = switch (@typeInfo(fields[f])) {
                 .array => x[f][i],
                 else => x[f],
             };

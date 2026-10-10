@@ -484,7 +484,7 @@ pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
     const opts = parse_opts(pinit, env_opts);
     Env.verbose = opts.verbose;
 
-    if (@import("builtin").mode == .Debug and Env.debug_warn) {
+    if (@import("builtin").mode == .debug and Env.debug_warn) {
         verbose(0, "--- warn --- Compiled in debug mode.\n", .{});
         if (!util.use_llvm_asm) {
             verbose(0, "--- warn --- non-LLVM backend: vector/float barriers may add memory traffic\n", .{});

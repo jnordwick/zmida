@@ -1,6 +1,6 @@
 SHELL=/bin/bash
 
-ZIG_BUILD_ARGS=--release=fast --verbose
+ZIG_BUILD_ARGS=-Dexamples=true --release=fast --verbose
 
 .PHONY: clean retest build test build-egs
 
