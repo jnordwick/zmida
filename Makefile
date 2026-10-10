@@ -24,4 +24,6 @@ run-egs:
 
 pngs: 
 	cd example && gnuplot *.gp
+	mkdir -p example/out
+	mv example/*.{gp,png,txt} example/out/
 
