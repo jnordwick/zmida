@@ -156,7 +156,7 @@ pub inline fn tsc_start() u64 {
 
     return (@as(u64, hi) << 32) | lo;
 }
-pub fn tsc_stop() u64 {
+pub inline fn tsc_stop() u64 {
     var lo: u32 = undefined;
     var hi: u32 = undefined;
 

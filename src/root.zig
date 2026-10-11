@@ -90,19 +90,19 @@ pub const CountConfig = struct {
     sample_calls: u32 = 1_000,
     /// number of calls in a performance counter collection
     perf_calls: u32 = 1_000_000,
-    /// if each call rerpesents multiple units of work (mostly for vector code)
+    /// if each call represents multiple units of work (mostly for vector code)
     work_units: u64 = 1,
 };
 
 /// trial based on amount of time for each trial. best used for fewer samples over longer
-/// periods of time.  The longer samples might help if you the OS aggressive throttles the
-/// cpy between sample runs.
+/// periods of time.  The longer samples might help if the cpu is aggressively throttled
+/// between sample runs.
 pub const TimedConfig = struct {
     /// millisecond in warmup
     warmup_millis: u32 = 1000,
     /// number of samples in a trial
     trial_samples: u32 = 100,
-    /// total milliseonds in trial (sample millis = trials millis / numer of samples)
+    /// total milliseconds in trial (sample millis = trials millis / number of samples)
     trial_millis: u32 = 2000,
     /// number milliseconds in a performance counter collection
     perf_millis: u32 = 2000,
@@ -152,7 +152,7 @@ pub const Config = union(enum) {
 pub const TextOpts = struct {
     /// display mode, by latency or throughput
     mode: enum { lat, thru } = .lat,
-    /// use ascii, false allows use of UNICOE and ANSI codes
+    /// use ascii, false allows use of UNICODE and ANSI codes
     ascii: bool = true,
     /// print info header before tables
     with_header: bool = true,
@@ -212,8 +212,7 @@ pub fn bench(pinit: *const std.process.Init, funcs: anytype, args: anytype) !voi
 /// prints text tables to stdout
 pub fn bench_ex(pinit: *const std.process.Init, env_opts: EnvOpts, config: Config, funcs: anytype, args: anytype) !void {
     if (!Env.already_init) init(pinit, env_opts);
-    const ftuple = if (is_tuple(@TypeOf(funcs))) funcs else .{funcs};
-    var study = try Study.run(null, config, ftuple, args);
+    var study = try Study.run(null, config, funcs, args);
     defer study.deinit();
     try study.write_text(null, .{ .mode = .lat });
 }
@@ -295,7 +294,8 @@ pub const Study = struct {
         this.clear_stats();
         inline for (0..functuple.len) |i| {
             verbose(1, "Running trial {d}/{d}\n", .{ i + 1, functuple.len });
-            var t = Trial.init(this.def, get_fname(funcs[i]));
+            var t = Trial.init(this.def, get_fname(functuple[i]));
+            errdefer t.deinit();
             try t.run(functuple[i], args);
             try this.trials.append(t);
         }
@@ -425,7 +425,7 @@ pub const Study = struct {
         const file = try get_file(fname, this.name, ".gp");
         defer if (fname != null) file.close(Env.io);
         if (fname) |f| {
-            verbose(1, "writing gnuplot timing data to file: {s}-perf.gp\n", .{
+            verbose(1, "writing gnuplot timing data to file: {s}.gp\n", .{
                 if (f.len > 0) f else this.name,
             });
         }
@@ -474,10 +474,10 @@ pub const PerfSample = struct {
 
 /// Must be called to intialize the library. This checks for clocks, pins the cpu,
 /// sets niceness, and processes command line switches.
-/// pinit: The int from the main. only 3 fields are required: gpa, io. and minimal.args.
+/// pinit: The init from the main. only 3 fields are required: gpa, io. and minimal.args.
 /// env_opts: override options. command line switches take precendece.
 pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
-    if (Env.already_init) errexit("Can only call zminda.init once", .{});
+    if (Env.already_init) errexit("Can only call zmida.init once", .{});
     Env.io = pinit.io;
     Env.alloc = pinit.gpa;
 
@@ -500,13 +500,13 @@ pub fn init(pinit: *const std.process.Init, env_opts: EnvOpts) void {
 
     Env.use_tsc = opts.use_tsc;
     time.Clock.setup(if (Env.use_tsc) .tsc else .monotonic) catch {
-        verbose(0, "--- warnng --- No capable TSC. using monotonic clock.\n", .{});
+        verbose(0, "--- warn --- No capable TSC. using monotonic clock.\n", .{});
     };
     Env.pin_cpu = opts.pin_cpu;
     if (Env.pin_cpu) |cpu| {
         var orig_set: sys.cpu_set = .{};
         sys.sched_getaffinity(0, &orig_set) catch |e| {
-            errexit("count no get cpu affinity: {}\n", .{e});
+            errexit("count not get cpu affinity: {}\n", .{e});
         };
         orig_set.clear(cpu);
         Env.orig_cpu_set = orig_set;

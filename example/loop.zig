@@ -21,7 +21,7 @@ pub fn main(init: std.process.Init) !void {
     // pin, set priority, and get cpu counters
     zm.init(&init, .{ .pin_cpu = 2, .set_prio = -10, .perf_cpu = true, .perf_mem = true });
 
-    // we want output in units of number of elements
+    // we want output in units of number of 16 element vectors registers
     const config: zm.Config = .byadapt(.{ .work_units = N / 16 });
     var study = try zm.Study.run("widesum", config, funcs, args);
     defer study.deinit();

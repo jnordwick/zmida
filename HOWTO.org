@@ -1,0 +1,312 @@
+* zmida HOWTO
+
+Part 1: day-to-day use. Part 2: knobs for the last few percent of noise.
+
+* Part 1: Basics
+
+** 1.1 First benchmark
+
+#+BEGIN_SRC zig
+const std = @import("std");
+const zm = @import("zmida");
+
+pub fn main(init: std.process.Init) !void {
+    const args = zm.gen.uniform(f64, 100, 0, 10, 0);
+    try zm.bench(&init, .{ f_a, f_b }, &args);
+}
+#+END_SRC
+
+#+BEGIN_SRC sh
+zig build run -Doptimize=ReleaseFast
+#+END_SRC
+
+Debug numbers are meaningless (zmida warns). =bench= is =bench_ex= with defaults;
+one function needs no tuple. Functions must be comptime-known (no runtime
+function pointers); output names come from function names.
+
+** 1.2 Argument forms
+
+The third argument says what each sweep calls. The form is deduced from its type.
+
+| you pass                    | each sweep calls                       |
+|-----------------------------+----------------------------------------|
+| ={}=                        | =f()= once (niladic)                   |
+| =.{ a, b }=                 | =f(a, b)= once                         |
+| =&xs= or slice of scalars   | =f(x)= per element                     |
+| =&ts= or slice of tuples    | =f(t[0], t[1], ...)= per tuple         |
+| a generator (1.3)           | =f(...)= per generated value           |
+
+- Naked values only for arrays/slices of single arguments; a lone argument goes in a tuple: =.{x}=.
+- Arrays by pointer (=&xs=); by value is a compile error.
+- Misidentified? Wrap in a tuple to force the single-call form.
+- Empty argument lists are rejected.
+- Every function in a study gets the same arguments.
+
+** 1.3 Making arguments
+
+Everything in =zm.gen= is built before timing, except generators.
+
+*Random arrays.* Explicit seed, so runs repeat. Ints in =[from, to]=, floats in =[from, to)=.
+The count is comptime; large arrays belong in a =const= or global, not the stack.
+
+#+BEGIN_SRC zig
+const xs = zm.gen.uniform(f32, 100, 2, 10, 0);   // type, count, from, to, seed
+#+END_SRC
+
+*Multiple arguments.* =tie= zips arrays into tuples and broadcasts non-arrays
+(scalars, pointers, anything) to every tuple. Arrays must have equal length.
+=tie2= / =tie2t= are the two-array cases; =tie2t= prepends the type, for
+functions like =std.math.log=.
+
+#+BEGIN_SRC zig
+const args  = zm.gen.tie(.{ bases, xs });          // [N]struct{ f32, f32 }
+const args2 = zm.gen.tie(.{ @as(f32, 2.0), xs });  // 2.0 in every call
+#+END_SRC
+
+*Generators.* Produce arguments on the fly; passed by value. Generator code runs
+*inside* the timed loop.
+
+#+BEGIN_SRC zig
+const ls = zm.gen.LinSpace(f32).init(1, 10, 100); // 100 points, both ends included (n >= 2)
+const r  = zm.gen.Range(u64).init(0, 1000, 10);   // 0, 10, ..., 1000 inclusive
+try zm.bench(&init, just_log, ls);
+#+END_SRC
+
+- =Range= (integer add + compare) compiles to the same code as a plain loop.
+- =LinSpace= carries FP state. SysV x86-64 has no callee-saved XMM registers, so
+  around any non-inlined call (libm via PLT) that state is spilled and reloaded
+  every iteration. Cost is small but nonzero; for FP-sensitive comparisons use a
+  materialized array. Anything heavier (an RNG) must be materialized too.
+- Custom generator: a struct with =pub const __zm__generator__ = true;=, a
+  =len: u64= field (values per sweep), and =pub fn next(this: *@This()) ?struct{...}=
+  returning an argument tuple, or null at the end.
+
+** 1.4 Reading the output
+
+Progress goes to stderr, results to stdout.
+
+#+BEGIN_EXAMPLE
+study: gamma
+compile: .ReleaseFast
+units: nanosec/op
+clock: .tsc @ 1497600000 Hz
+display: latency (lower is better)
+
+fn         |      calls  seconds    mean |   best     p75     p50     p25   worst
+-----------+-----------------------------+---------------------------------------
+logtgamma  |   12638100     3.04  240.37 | 238.46  239.60  240.22  240.77  264.67
+#+END_EXAMPLE
+
+- *calls*, *seconds*: total calls and timed seconds in the trial.
+- *mean*: total time / total calls.
+- *best..worst*: per-call figures of whole *samples*, not individual calls.
+  "best" is the fastest sample.
+- Percentile columns are *performance* percentiles, best to worst: p75 means 75%
+  of samples were slower. In latency mode that is the 25th latency percentile.
+- Units scale automatically (ns/us/ms/s per op; ops/Kops/Mops/Gops per second).
+- No standard deviation: latency is right-skewed; the spread columns say more.
+
+Perf table (when counters are on), per call:
+
+| column   | meaning                          |
+|----------+----------------------------------|
+| ipc      | instructions per cycle           |
+| insts    | instructions retired             |
+| cycles   | CPU cycles                       |
+| imiss    | L1i read misses                  |
+| miss/M   | branch misses per million branches |
+| misses   | branch misses                    |
+| branches | branches                         |
+
+=-p=mem= adds a cache table: L1d read/miss/write and LL read/miss/write/write-miss, per call.
+
+** 1.5 Throughput instead of latency
+
+=bench= prints latency. For throughput use a =Study= with =.write_text(null, .{ .mode = .thru })=.
+
+** 1.6 Study
+
+=bench= discards its study after printing. Keep it to write other formats:
+
+#+BEGIN_SRC zig
+pub fn main(init: std.process.Init) !void {
+    zm.init(&init, .{});    // once, before the first Study.run (bench does it for you)
+    var study = try zm.Study.run("my study", .byadapt(.{}), .{ f_a, f_b }, &args);
+    defer study.deinit();
+
+    try study.write_text(null, .{});
+    try study.write_summary("my", .{});     // my-summary.csv
+}
+#+END_SRC
+
+Each =write_*= takes a name, or =null= for stdout. With a name, the suffix is
+appended and the file is created/truncated in the cwd; ="="= uses the study name.
+
+| method               | suffix         | content                                       |
+|----------------------+----------------+-----------------------------------------------|
+| =write_text=         | =.txt=         | the tables above                              |
+| =write_summary=      | =-summary.csv= | one row per function: mean, percentiles, perf |
+| =write_samples=      | =-samples.csv= | every sample: =fn,calls,nanos=                |
+| =write_gnuplot=      | =.gp=          | self-contained gnuplot script, Kops/sec       |
+| =write_gnuplot_perf= | =-perf.gp=     | multiplot of cpu perf counters                |
+
+- Summary CSV: values in ns per call; percentile columns (=SummaryOpts.pctiles=,
+  0..100) are ordinary latency percentiles, =p0= fastest, =p100= slowest, the
+  reverse of the text table's latency labels.
+- Samples CSV: =nanos= is the whole sample's time; divide by =calls= for latency.
+- Plot: =gnuplot -p my.gp=. The perf plot needs perf counters enabled.
+
+* Part 2: Advanced
+
+** 2.1 Trial types
+
+#+BEGIN_SRC zig
+.byadapt(.{})   // default
+.bytime(.{})
+.bycount(.{})
+#+END_SRC
+
+- *Adaptive*: you give trial time and sample count; a short timed calibration finds
+  sweeps per sample; samples then run by count, with no timer thread running.
+  Defaults: 1 s warmup, 100 samples, 2 s sampling, 2 s perf.
+- *Count*: you give calls (=warmup_calls=, =trial_samples=, =sample_calls=,
+  =perf_calls=), rounded up to whole sweeps. For exactly reproducible work.
+- *Timed*: each sample runs until a helper thread says stop (=trial_millis / trial_samples=
+  long). For wall-clock-bounded samples, e.g. when one sweep is slow.
+
+Cost per function: warmup + trial (+ perf) time; ~3 s default, ~5 s with perf.
+
+** 2.2 Options
+
+#+BEGIN_SRC zig
+zm.init(&init, .{
+    .verbose = 1,      // 0 silent, 1 normal, 2 trace
+    .use_tsc = true,
+    .pin_cpu = 1,
+    .set_prio = -5,    // negative needs root
+    .perf_cpu = true,
+    .perf_mem = false,
+});
+#+END_SRC
+
+or =zm.bench_ex(&init, env_opts, config, funcs, args)=. Only the first init applies.
+
+Command line switches override code: =./prog -c=3 -p=both -v=2=. Form is =-x=value=
+(=-x value= fails); =-t= alone is on, =-t=off= is off; bare =-v= is 2. Any
+unknown argument starting with =-= is an error. See the README for the list.
+
+** 2.3 Perf counters
+
+=-p=cpu=: instructions, cycles, branches, branch misses, L1i misses.
+=-p=mem=: L1d and LL read/write counters. =-p=both=: both.
+
+- Collected in a *separate* run after timing, so they cannot perturb it.
+- User space only, calling thread only.
+- The cpu group is pinned to the PMU (exact). Mem events are not; the kernel may
+  multiplex them and zmida scales by enabled/running time. Treat mem as estimates.
+- =errno_acces= / =errno_perm=: =sudo sysctl kernel.perf_event_paranoid=2=.
+- =errno_noent= / =errno_inval= / =errno_opnotsupp=: CPU or hypervisor lacks the
+  event. Cache events are patchy on VMs and hybrid CPUs.
+- NaN in perf columns: the group never got scheduled onto the PMU (running time 0).
+
+** 2.4 A quiet machine
+
+- Pin with =-c=N=, ideally an isolated core (=isolcpus=, =nohz_full=), not a busy core's hyperthread sibling.
+- With pinning, zmida reads that core's cpufreq settings and warns (only warns) if
+  the governor is not =performance=, or for =intel_pstate= / =amd-pstate-epp= if
+  the energy-performance preference favors power. =-v=2= shows what it found.
+- The helper thread (timed trials, warmup, adaptive pre-estimate) is moved off the
+  pinned core and niced to 19. Not when linking libc (pthreads): it stays on the core.
+- =-n=-10= raises priority (root). Close the browser.
+
+** 2.5 The clock
+
+Default is the TSC: =lfence; rdtsc= to start, =rdtscp; lfence= to stop, far cheaper
+than a syscall. Needs an invariant TSC; frequency comes from CPUID leaf 0x15,
+then 0x16 (base frequency, warns). Otherwise zmida warns and uses
+=clock_gettime(CLOCK_MONOTONIC_RAW)=, which is fine for the default long samples.
+
+CPUID frequency is nominal. Cross-check with =-t=off=; results should agree within
+about a percent. The header line =clock: .tsc @ N Hz= shows which clock ran.
+
+** 2.6 Keeping the compiler honest
+
+The harness applies =dno= (a =doNotOptimizeAway=) to the argument list once per
+sample, and to the result of every call. Per-call arguments are not wrapped. Under
+LLVM, =zm.dno= uses empty =asm volatile= with register constraints for floats and
+vectors; =std.mem.doNotOptimizeAway= forces them through memory and kills ILP.
+Other backends fall back to std and zmida warns. Limits: floats up to 64 bits;
+vectors up to 128 bit (SSE), 256 (AVX), 512 (AVX-512); a vector the target cannot
+hold in a register fails with =couldn't allocate input reg for constraint 'x'=.
+
+- *In your function*: take inputs from the argument list. Literals let the compiler fold the work away.
+- *Call modifier*: declare in the *root source file of the executable* (the one with =main=):
+
+#+BEGIN_SRC zig
+pub const __zm__callmod__ = std.builtin.CallModifier.always_inline;
+#+END_SRC
+
+=always_inline= optimizes the body together with the loop (unrolling, ILP);
+=never_inline= keeps a real call. Default is =.auto=. Announced at verbosity 1.
+=example/plots.zig= compares direct, function-pointer, and method calls.
+
+** 2.7 Bulk work per call: =work_units=
+
+When one call does many units of work (a loop over an array, a SIMD kernel), set
+=work_units= so calls, latency and throughput are per unit:
+
+#+BEGIN_SRC zig
+const config: zm.Config = .byadapt(.{ .work_units = N });  // N elements per call
+#+END_SRC
+
+Call counts are multiplied by =work_units= after sampling, in timing and perf runs.
+Use throughput mode. Inside your own loops use =zm.dno= so they are not dead-code
+eliminated. See =example/loop.zig= (pass pointer and length as one tuple).
+
+** 2.8 Baseline overhead
+
+Loop, =dno= calls and timer start/stop are in every measurement; nothing is
+subtracted. Measure it by benchmarking a no-op with the same argument list:
+
+#+BEGIN_SRC zig
+fn nothing(x: u64) u64 {
+    std.mem.doNotOptimizeAway(&x);
+    return x;
+}
+#+END_SRC
+
+Put it beside your functions; the difference is yours (=ccall= in =example/plots.zig=).
+No automatic subtraction because the baseline is unreliable: register spills and
+memory traffic appear or not depending on factors you do not control. Wrong
+adjustments are worse than none.
+
+** 2.9 Results in code
+
+#+BEGIN_SRC zig
+try study.statistics();    // idempotent
+for (study.stats.items) |s| {
+    std.debug.print("{s}: {d:.2} ns/call, p50 {d:.2}\n", .{
+        s.trial.name, s.call_avg_ns, s.percentiles[50],
+    });
+}
+for (study.trials.items[0].data.items) |sample| {
+    // sample.ord, sample.calls, sample.nanos
+}
+#+END_SRC
+
+=percentiles= is indexed best-first by latency: =[0]= is the worst, =[100]= the best.
+
+** 2.10 Troubleshooting
+
+| symptom                                   | check                                        |
+|-------------------------------------------+----------------------------------------------|
+| =Compiled in debug mode=                  | =-Doptimize=ReleaseFast=                     |
+| =non-LLVM backend= warning                | self-hosted backend; =dno= may add memory traffic |
+| =No capable TSC. using monotonic=         | no invariant TSC / CPUID leaves; harmless    |
+| =unknown option name: ...=                | your own argument starting with =-=          |
+| =pin cpu wants cpu number=                | wrote =-c 1=; use =-c=1=                     |
+| perf =errno_acces= / =errno_perm=         | =perf_event_paranoid= (2.3)                  |
+| =could not set cpu affinity=              | cpu not in your allowed set                  |
+| 0.3 ns per call                           | compiler removed it (2.6, 2.8)               |
+| worst case 3-8x median                    | normal: interrupts, SMIs, migrations; pin, isolate, read p50 |
+| first function in a study slower          | cold shared tables; add a throwaway copy first |

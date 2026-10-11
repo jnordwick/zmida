@@ -330,6 +330,10 @@ pub fn csv_summary(
     trials: []const root.TrialStats,
     opts: root.SummaryOpts,
 ) !void {
+    // check pctiles
+    for (opts.pctiles) |p| {
+        std.debug.assert(p <= 100);
+    }
     // header
     if (opts.with_header) {
         try writer.print(

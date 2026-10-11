@@ -103,7 +103,7 @@ pub const Trial = struct {
         this.work_units = this.def.count.work_units;
 
         // warmup
-        verbose(1, " warmup {d}k calls", .{
+        verbose(1, " warmup {d}k calls\n", .{
             float_div(f64, this.def.count.warmup_sweeps * this.calls_per_sweep, 1000),
         });
         dno(try runners.count_sample(
@@ -159,7 +159,7 @@ pub const Trial = struct {
     fn count_samples(this: *@This(), func: anytype, args: anytype, trial_samples: u64, sample_sweeps: u64, perf_sweeps: u64) !void {
         const argstype = util.argstype_of(@TypeOf(args));
         // timed
-        verbose(1, "timing samples {d} sweeps @ {d} calls", .{
+        verbose(1, "timing {d} samples @ {d} calls each", .{
             trial_samples,
             sample_sweeps * this.calls_per_sweep,
         });
@@ -180,6 +180,7 @@ pub const Trial = struct {
                 .{ this.name, perf_sweeps },
             );
             var panel = try util.make_cpu_panel(Env.alloc);
+            defer panel.deinit();
             const res = try runners.count_sample(
                 argstype,
                 &panel,
@@ -189,7 +190,6 @@ pub const Trial = struct {
             );
             this.perf.cpu_calls = res.calls * this.work_units;
             try panel.read(0, this.perf.cpu.as_payload());
-            panel.deinit();
         }
 
         if (Env.perf_mem) {
@@ -199,6 +199,7 @@ pub const Trial = struct {
                 .{ this.name, perf_sweeps },
             );
             var panel = try util.make_mem_panel(Env.alloc);
+            defer panel.deinit();
             const res = try runners.count_sample(
                 argstype,
                 &panel,
@@ -209,7 +210,6 @@ pub const Trial = struct {
             this.perf.mem_calls = res.calls * this.work_units;
             try panel.read(0, this.perf.memr.as_payload());
             try panel.read(1, this.perf.memw.as_payload());
-            panel.deinit();
         }
     }
 

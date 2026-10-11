@@ -2,5 +2,4 @@
 zig-out
 zig-pkg
 *.gp
-!src/template.gp
-!src/template_perf.gp
+!src/template_*.gp

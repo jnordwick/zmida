@@ -71,9 +71,9 @@ pub fn str_in(x: []const u8, pats: anytype) bool {
 }
 
 pub fn parse_bool(x: []const u8) bool {
-    if (str_in(x, .{ "true", "on" })) {
+    if (str_in(x, .{ "true", "yes" })) {
         return true;
-    } else if (str_in(x, .{ "false", "off" })) {
+    } else if (str_in(x, .{ "false", "no" })) {
         return false;
     } else {
         errexit("unknown option value: {s}", x);
@@ -92,7 +92,7 @@ fn print_usage(lev: i32) noreturn {
         \\ usage:
         \\   -c=<n> | --cpu=<n>     pin to cpu: any core number
         \\   -h     | --help        this message
-        \\   -n=<n> | --nice=<n>    set process niceness: -20 to 19 (<0 requies root)
+        \\   -n=<n> | --nice=<n>    set process niceness: -20 to 19 (<0 requries root)
         \\   -p=<s> | --perf=<s>    perf_event counters: cpu (default), mem, both
         \\   -t[=b] | --tsc[=b]     attempt RDTSC timer: yes/true (default), no/false
         \\   -v[=n] | --verbose[=n] verbose level: 0 (silent) to 2 (default)
@@ -143,7 +143,7 @@ pub fn parse_opts(pinit: *const std.process.Init, env_opts: root.EnvOpts) root.E
                 opts.perf_cpu = true;
                 opts.perf_mem = true;
             } else {
-                errexit("unknown perf arguent (cpu, mem, both): {s}", val);
+                errexit("unknown perf argument (cpu, mem, both): {s}", val);
             }
         } else if (str_in(name, .{ "-h", "--help" })) {
             print_usage(-1);

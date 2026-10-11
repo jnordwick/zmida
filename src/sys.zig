@@ -45,13 +45,12 @@ pub const PRIO = enum(i32) {
     PROCESS = 0,
     PGRP = 1,
     USER = 2,
-    DARWIN_THREAD = 3,
 };
 
 pub fn getpriority(which: PRIO, who: id_t) !i32 {
     const rc = std.os.linux.syscall2(
         .getpriority,
-        @bitCast(@as(isize, @intCast(@intFromEnum(which)))),
+        @bitCast(@as(isize, @intCast(@backingInt(which)))),
         @bitCast(@as(isize, @intCast(who))),
     );
     const prio = try errno.chkerr(rc);
@@ -61,7 +60,7 @@ pub fn getpriority(which: PRIO, who: id_t) !i32 {
 pub fn setpriority(which: PRIO, who: id_t, prio: i32) !void {
     const rc = std.os.linux.syscall3(
         .setpriority,
-        @bitCast(@as(isize, @intCast(@intFromEnum(which)))),
+        @bitCast(@as(isize, @intCast(@backingInt(which)))),
         @bitCast(@as(isize, @intCast(who))),
         @bitCast(@as(isize, prio)),
     );
@@ -123,7 +122,6 @@ pub fn sched_getaffinity(pid: i32, mask: *cpu_set) !void {
         @intFromPtr(&mask.mask),
     );
 
-    // Decodes using your fast custom error-handling layer
     _ = try errno.chkerr(rc);
 }
 

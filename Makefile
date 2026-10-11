@@ -2,7 +2,7 @@ SHELL=/bin/bash
 
 ZIG_BUILD_ARGS=-Dexamples=true --release=fast --verbose
 
-.PHONY: clean retest build test build-egs
+.PHONY: build test retest clean runs-egs pngs
 
 build:
 	zig build --verbose

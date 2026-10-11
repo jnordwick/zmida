@@ -69,11 +69,11 @@ pub const Event = struct {
     config: u64,
 
     pub fn make_hw(s: HW) Event {
-        return .{ .typ = .HARDWARE, .config = @intFromEnum(s) };
+        return .{ .typ = .HARDWARE, .config = @backingInt(s) };
     }
 
     pub fn make_cache(lev: CACHE, op: CACHE.OP, res: CACHE.RESULT) Event {
-        const config = @intFromEnum(lev) | (@intFromEnum(op) << 8) | (@intFromEnum(res) << 16);
+        const config = @backingInt(lev) | (@backingInt(op) << 8) | (@backingInt(res) << 16);
         return .{ .typ = .HW_CACHE, .config = config };
     }
 
@@ -210,7 +210,7 @@ pub const PerfProbe = struct {
 
     pub fn read(this: *const @This(), buf: []u8) !void {
         const r = try std.posix.read(this.fds[0], buf);
-        std.debug.assert(r == buf.len);
+        if (r != buf.len) return error.short_read;
     }
 };
 
